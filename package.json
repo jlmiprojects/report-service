@@ -1,0 +1,14 @@
+{
+  "name": "reports-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tailwind build for reports-service HTML report templates",
+  "scripts": {
+    "build": "tailwindcss -i ./assets/input.css -o ./static/output.css --minify && node ./build/inline-css.js",
+    "watch": "tailwindcss -i ./assets/input.css -o ./static/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
+}

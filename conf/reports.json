@@ -1,0 +1,33 @@
+{
+    "_comment": "Example report data_actions - documentation only. Real reports live in the 'reports' collection. A report's dataset is built by running its data_actions in order; each result is exposed to the template as data.<name>.data. request values are templated with the URL query params before the action runs.",
+    "data_actions": [
+        {
+            "type": "mongo",
+            "name": "devices",
+            "action": "mongo.find",
+            "connection": "default",
+            "request": {
+                "collection": "devices",
+                "filter": { "owner": { "$oid": "{{.profile_id}}" } },
+                "projection": { "name": 1, "imei": 1, "status": 1 },
+                "sort": { "name": 1 },
+                "limit": 5000
+            }
+        },
+        {
+            "type": "mongo",
+            "name": "device_summary",
+            "action": "mongo.aggregate",
+            "connection": "analytics",
+            "ttl": "60s",
+            "request": {
+                "collection": "devices",
+                "pipeline": [
+                    { "$match": { "$expr": { "$eq": ["$owner", { "$toObjectId": "{{.profile_id}}" }] } } },
+                    { "$group": { "_id": "$status", "count": { "$sum": 1 } } },
+                    { "$sort": { "count": -1 } }
+                ]
+            }
+        }
+    ]
+}

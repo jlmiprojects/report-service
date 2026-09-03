@@ -1,0 +1,329 @@
+package handlers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"html/template"
+	"io"
+	"log"
+	"log/slog"
+	"net/http"
+	"os"
+	"reflect"
+	"strings"
+	"time"
+
+	"blueassetgroup.com/reports-service/repository"
+	"blueassetgroup.com/reports-service/service"
+	utils "blueassetgroup.com/reports-service/shared"
+	globals "blueassetgroup.com/reports-service/utils"
+	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/chromedp"
+	"github.com/dustin/go-humanize"
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/mafredri/cdp/devtool"
+	"github.com/spf13/cast"
+)
+
+// newServer wires the echo HTTP server: the html/csv template renderer, the
+// static asset mount, the error handler and the /reports/run + /management
+// routes. All report handlers are registered in the `globals` registry keyed by
+// the report's Handler name ("generic" today).
+func NewServer(config *utils.Config, repo *repository.MongoRepository, serviceCalls *service.ServiceCall, conns *repository.MongoConnections) *echo.Echo {
+
+	funcMap := reportFuncMap()
+
+	renderer := &templateRenderer{
+		templates: template.Must(template.New("template").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html")),
+	}
+
+	csvRender := template.Must(template.New("").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html"))
+
+	reportHandler := NewReportHandler(serviceCalls, csvRender, config, funcMap, conns)
+	globals.AddHAndler("generic", reportHandler.Generic)
+
+	e := echo.New()
+	e.Renderer = renderer
+	e.Static("/reports/static", "../static")
+
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		slog.Error("Template render error", "error", err, "path", c.Request().URL.Path)
+		c.Render(http.StatusInternalServerError, "error.html", err)
+	}
+
+	h := httpHandlers{config: config, repo: repo}
+	e.GET("/run", h.runReport)
+	e.GET("/management", h.management)
+
+	return e
+}
+
+// httpHandlers holds the dependencies the HTTP routes need.
+type httpHandlers struct {
+	config *utils.Config
+	repo   *repository.MongoRepository
+}
+
+// runReport serves GET /reports/run: it resolves the report by name, validates
+// required params, then dispatches to the report handler for html / csv, or
+// renders the html variant through headless Chrome for pdf.
+func (h httpHandlers) runReport(c echo.Context) error {
+
+	for key, value := range c.QueryParams() {
+		slog.Info("Key/Value", "key", key, "value", value)
+	}
+
+	name := c.QueryParam("name")
+
+	if len(name) == 0 {
+		slog.Error("Name not optional")
+		return c.Render(http.StatusOK, "error.html", errors.New("name is not optional for now"))
+	}
+
+	_type := "html"
+
+	if c.QueryParams().Has("type") {
+		_type = c.QueryParam("type")
+	}
+
+	var err error
+
+	report, err := h.repo.FindByName(name)
+
+	if err != nil {
+		slog.Error("Failed to find report", "error", err, "name", name)
+		return c.Render(http.StatusOK, "error.html", fmt.Errorf("Failed to find report with name %s, %w", name, err))
+
+	}
+
+	// Validate params
+	for _, p := range report.Parameters {
+		if p.Required && !c.QueryParams().Has(p.Name) {
+			err = fmt.Errorf("Parameter %s is not optional", p.Name)
+			slog.Error("Not optional", "error", err, "name", name)
+			return c.Render(http.StatusOK, "error.html", err)
+
+		}
+	}
+
+	handlerName := report.Handler
+
+	if len(handlerName) == 0 {
+		handlerName = report.Name
+	}
+
+	// Run report
+	if _type == "html" {
+
+		handler, exist := globals.GetHandler(handlerName)
+		if !exist {
+			slog.Error("Failed to get handler", "error", "Handler does not exist for report", "name", handlerName)
+			return c.Render(http.StatusOK, "error.html", err)
+		}
+
+		return handler(c, _type, report)
+
+	} else if _type == "csv" {
+
+		handler, exist := globals.GetHandler(handlerName)
+		if !exist {
+			slog.Error("Failed to get handler", "error", "Handler does not exist for report", "name", handlerName)
+			return c.Render(http.StatusOK, "error.html", err)
+		}
+
+		return handler(c, _type, report)
+
+	} else if _type == "pdf" {
+
+		urlstr := h.config.ChromeUrl
+
+		slog.Info("Chrome URL", "url", h.config.ChromeUrl)
+
+		//defer cancel()
+
+		ctx := context.Background()
+		devTools := devtool.New(*urlstr)
+		pt, err := devTools.Get(ctx, devtool.Page)
+		if err != nil {
+			pt, err = devTools.Create(ctx)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		var opts []chromedp.ContextOption
+		opts = append(opts, chromedp.WithDebugf(log.Printf))
+
+		slog.Info(pt.WebSocketDebuggerURL)
+
+		allocatorContext, cancel := chromedp.NewRemoteAllocator(context.Background(), pt.WebSocketDebuggerURL)
+		defer cancel()
+
+		if err != nil {
+			slog.Error("Failed to create remote allocator for chrome", "error", err, "name", name)
+			return c.Render(http.StatusOK, "error.html", err)
+
+		}
+
+		ctx, cancel = chromedp.NewContext(allocatorContext)
+		defer cancel()
+
+		url := fmt.Sprintf("http://%s:%d%s?%s", "localhost", h.config.Port, c.Path(), c.QueryString())
+		slog.Info("URL is", "url", url)
+		// capture pdf
+		var buf []byte
+
+		url = strings.ReplaceAll(url, "type=pdf", "type=html")
+
+		slog.Info("URL for chrome", "url", url)
+		if err := chromedp.Run(ctx, printToPDF(url, &buf)); err != nil {
+			slog.Error("Error Running Chrome", "error", err)
+			return c.Render(http.StatusOK, "error.html", fmt.Sprintf("Failed to render %s", err.Error()))
+		}
+
+		uuid := uuid.New()
+
+		fileName := fmt.Sprintf("/tmp/%s_%s.pdf", uuid.String(), c.QueryParam("name"))
+
+		if err := os.WriteFile(fileName, buf, 0o644); err != nil {
+			slog.Error("Error", "error", err)
+			return c.Render(200, "error.html", err.Error())
+
+		}
+		err = c.Attachment(fileName, c.QueryParam("name")+".pdf")
+	} else {
+		err = errors.New("type is not correctly set only options are csv | pdf | html")
+	}
+
+	if err != nil {
+		slog.Error("Failed to render", "error", err)
+	}
+
+	return err
+}
+
+// management serves GET /management.
+func (h httpHandlers) management(c echo.Context) error {
+	slog.Info("management called")
+	return c.Render(200, "management.html", nil)
+}
+
+// templateRenderer adapts the parsed html templates to echo's Renderer.
+type templateRenderer struct {
+	templates *template.Template
+}
+
+func (t *templateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
+}
+
+// printToPDF is the chromedp task list that navigates to a URL and captures it
+// as a PDF into res.
+func printToPDF(urlstr string, res *[]byte) chromedp.Tasks {
+	return chromedp.Tasks{
+		chromedp.Navigate(urlstr),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			buf, _, err := page.PrintToPDF().WithPrintBackground(false).Do(ctx)
+			if err != nil {
+				return err
+			}
+			*res = buf
+			return nil
+		}),
+	}
+}
+
+// fieldByName is the `fieldByName` template helper: reflective struct field
+// access used by report templates.
+func fieldByName(obj interface{}, fieldName string) (interface{}, error) {
+	val := reflect.ValueOf(obj)
+	// If the object is a pointer, dereference it
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("fieldByName: object is not a struct")
+	}
+
+	field := val.FieldByName(fieldName)
+	if !field.IsValid() {
+		return nil, fmt.Errorf("fieldByName: field '%s' not found", fieldName)
+	}
+	return field.Interface(), nil
+}
+
+// reportFuncMap is the template function map shared by the html renderer, the
+// csv renderer and the report data-action request templating.
+func reportFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"formatAddress": func(address string) template.HTML {
+
+			if strings.Contains(address, "@") {
+				address = "<span class='font-bold'>" + strings.Split(address, "@")[0] + "</span><br><span>" + strings.Split(address, "@")[1] + "</span>"
+			}
+
+			return template.HTML(address)
+		},
+		"add": func(a, b any) float64 {
+
+			_a := cast.ToFloat64(a)
+			_b := cast.ToFloat64(b)
+			//return math.Ceil((a + b) * 100 / 100)
+			return _a + _b
+		},
+		"multiply": func(a, b int) int {
+			return a * b
+		},
+		"formatFloat": func(a any) string {
+
+			if i, ok := a.(int64); ok {
+				return fmt.Sprintf("%d.00", i)
+			} else if i, ok := a.(int); ok {
+				return fmt.Sprintf("%d.00", i)
+			}
+			return fmt.Sprintf("%.2f", a)
+		},
+		"split": func(list string, sep string) []string {
+			return strings.Split(list, sep)
+		},
+		"fieldByName": fieldByName,
+		"convertToLocal": func(_t string) string {
+
+			location, err := time.LoadLocation("Africa/Johannesburg")
+
+			if err != nil {
+				return err.Error()
+			}
+
+			date, err := time.Parse(time.RFC3339, _t)
+
+			if err != nil {
+				return err.Error()
+			}
+
+			_date := date.In(location)
+
+			return _date.Format("2006-01-02 15:04:05")
+		},
+		"formatWorkingTime": func(a any) string {
+
+			totalMinutes := cast.ToInt(a)
+
+			hours := totalMinutes / 60
+			minutes := totalMinutes % 60
+			return fmt.Sprintf("%d:%02d", hours, minutes)
+
+		}, "comma": func(f any) string {
+			_f := cast.ToInt64(f)
+
+			return humanize.Comma(_f)
+		}, "mod": func(a, b int) int {
+			return a % b
+		}, "replaceAll": strings.ReplaceAll,
+		"fixString": func(s string) string {
+			return strings.ReplaceAll(strings.ReplaceAll(s, "\\N", ""), "\t", "")
+		},
+	}
+}

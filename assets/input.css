@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Scan the report templates for utility classes. */
+@source "../reports/**/*.html";
+
+/* Brand palette — mirrors broker-portal ui/assets/input.css @theme so the
+   reports render in the same colours as the broker portal. */
+@theme {
+  --font-sans: Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-brand-teal: #1a6f87;
+  --color-brand-dark-teal: #155b6e;
+  --color-brand-orange: #d87035;
+  --color-brand-bg-light: #f3f7f8;
+  --color-brand-100: #e4eef1;
+  --color-brand-800: #12414f;
+
+  --color-mist: #f4fafb;
+  --color-muted: #6b7280;
+
+  --color-navy-950: #101927;
+  --color-navy-900: #122835;
+  --color-navy-800: #1b3a4e;
+  --color-navy-700: #1d5568;
+  --color-navy-600: #257490;
+}

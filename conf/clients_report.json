@@ -1,0 +1,31 @@
+{
+    "_comment": "Report definition for the clients listing. Insert this document into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table). The report reads the 'clients' collection from the 'blue-asset' database via the 'default' connection, then renders reports/clients.html. Run it with GET /run?name=clients (add &type=pdf for the PDF variant).",
+    "name": "clients",
+    "handler": "generic",
+    "description": "All records in the clients collection (blue-asset database).",
+    "template": "clients",
+    "management": false,
+    "parameters": [
+        {
+            "name": "status",
+            "description": "Optional client status shown in the report header (ACTIVE / ARCHIVED). Display only.",
+            "required": false,
+            "type": "string"
+        }
+    ],
+    "data_actions": [
+        {
+            "name": "clients",
+            "type": "mongo",
+            "action": "mongo.find",
+            "connection": "default",
+            "ttl": "60s",
+            "request": {
+                "collection": "clients",
+                "database": "blue-asset",
+                "sort": { "created_at": -1 },
+                "limit": 5000
+            }
+        }
+    ]
+}
