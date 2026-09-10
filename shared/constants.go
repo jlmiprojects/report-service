@@ -48,12 +48,13 @@ const (
 )
 
 const (
-	REPORTS_FIND_ALL        = "reports.findall"
-	REPORTS_SCHEDULE_ADD    = "reports.schedule.add"
-	REPORTS_SCHEDULE_UPDATE = "reports.schedule.update"
-	REPORTS_SCHEDULE_DELETE = "reports.schedule.delete"
-	REPORTS_SCHEDULE_FIND   = "reports.schedule.find"
-	REPORTS_SCHEDULE_RUN    = "reports.schedule.run"
+	REPORTS_FIND_ALL        = "blueasset.reports.findall"
+	REPORTS_SCHEDULE_ADD    = "blueasset.reports.schedule.add"
+	REPORTS_SCHEDULE_UPDATE = "blueasset.reports.schedule.update"
+	REPORTS_SCHEDULE_DELETE = "blueasset.reports.schedule.delete"
+	REPORTS_SCHEDULE_FIND   = "blueasset.reports.schedule.find"
+	REPORTS_SCHEDULE_RUN    = "blueasset.reports.schedule.run"
+	REPORTS_PARAM_OPTIONS   = "blueasset.reports.param.options"
 )
 
 const (

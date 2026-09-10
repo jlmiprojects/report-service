@@ -4,23 +4,25 @@
 @source "../reports/**/*.html";
 
 /* Brand palette — mirrors broker-portal ui/assets/input.css @theme so the
-   reports render in the same colours as the broker portal. */
+   reports render in the same colours as the broker portal (BluHive:
+   navy/azure). Token names are kept stable across the BluHive rebrand so the
+   report templates' class names didn't need to change, only these values. */
 @theme {
   --font-sans: Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  --color-brand-teal: #1a6f87;
-  --color-brand-dark-teal: #155b6e;
-  --color-brand-orange: #d87035;
-  --color-brand-bg-light: #f3f7f8;
-  --color-brand-100: #e4eef1;
-  --color-brand-800: #12414f;
+  --color-brand-teal: #1e9ed9;
+  --color-brand-dark-teal: #166f9c;
+  --color-brand-orange: #1e9ed9;
+  --color-brand-bg-light: #f4f6f9;
+  --color-brand-100: #eaf6fc;
+  --color-brand-800: #0a203c;
 
-  --color-mist: #f4fafb;
-  --color-muted: #6b7280;
+  --color-mist: #eaf6fc;
+  --color-muted: #6b7488;
 
-  --color-navy-950: #101927;
-  --color-navy-900: #122835;
-  --color-navy-800: #1b3a4e;
-  --color-navy-700: #1d5568;
-  --color-navy-600: #257490;
+  --color-navy-950: #08192e;
+  --color-navy-900: #0a203c;
+  --color-navy-800: #14304a;
+  --color-navy-700: #4e5668;
+  --color-navy-600: #166f9c;
 }

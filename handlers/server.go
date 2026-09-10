@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
 	"blueassetgroup.com/reports-service/repository"
-	"blueassetgroup.com/reports-service/service"
 	utils "blueassetgroup.com/reports-service/shared"
 	globals "blueassetgroup.com/reports-service/utils"
 	"github.com/chromedp/cdproto/page"
@@ -30,18 +30,15 @@ import (
 // newServer wires the echo HTTP server: the html/csv template renderer, the
 // static asset mount, the error handler and the /reports/run + /management
 // routes. All report handlers are registered in the `globals` registry keyed by
-// the report's Handler name ("generic" today).
-func NewServer(config *utils.Config, repo *repository.MongoRepository, serviceCalls *service.ServiceCall, conns *repository.MongoConnections) *echo.Echo {
-
-	funcMap := reportFuncMap()
+// the report's Handler name ("generic" today). reportHandler is shared with
+// the NATS-side Handler (see cmd/main.go) so lookup-parameter resolution
+// reuses the same DataActions engine as a full report run.
+func NewServer(config *utils.Config, repo *repository.MongoRepository, funcMap template.FuncMap, reportHandler *ReportHandler) *echo.Echo {
 
 	renderer := &templateRenderer{
 		templates: template.Must(template.New("template").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html")),
 	}
 
-	csvRender := template.Must(template.New("").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html"))
-
-	reportHandler := NewReportHandler(serviceCalls, csvRender, config, funcMap, conns)
 	globals.AddHAndler("generic", reportHandler.Generic)
 
 	e := echo.New()
@@ -105,6 +102,21 @@ func (h httpHandlers) runReport(c echo.Context) error {
 			slog.Error("Not optional", "error", err, "name", name)
 			return c.Render(http.StatusOK, "error.html", err)
 
+		}
+
+		if p.Regexp != "" && c.QueryParams().Has(p.Name) {
+			re, reErr := regexp.Compile(p.Regexp)
+			if reErr != nil {
+				slog.Error("invalid parameter regexp", "name", p.Name, "regexp", p.Regexp, "error", reErr)
+				continue
+			}
+			for _, v := range c.QueryParams()[p.Name] { // CHECKBOX sends repeated values
+				if !re.MatchString(v) {
+					err = fmt.Errorf("Parameter %s value %q does not match the required pattern", p.Name, v)
+					slog.Error("Regexp mismatch", "error", err, "name", name)
+					return c.Render(http.StatusOK, "error.html", err)
+				}
+			}
 		}
 	}
 
@@ -254,9 +266,9 @@ func fieldByName(obj interface{}, fieldName string) (interface{}, error) {
 	return field.Interface(), nil
 }
 
-// reportFuncMap is the template function map shared by the html renderer, the
+// ReportFuncMap is the template function map shared by the html renderer, the
 // csv renderer and the report data-action request templating.
-func reportFuncMap() template.FuncMap {
+func ReportFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"formatAddress": func(address string) template.HTML {
 

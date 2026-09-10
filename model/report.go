@@ -71,15 +71,98 @@ type Report struct {
 	ACI          string             `json:"aci"`
 	TemplateName string             `json:"template"`
 	Management   bool               `json:"management" bson:"management"`
-	DataActions  []*DataActions     `json:"data_actions" bson:"data_actions"`
+	// Excel is set when the report also has an <name>.csv template and can be
+	// rendered as an .xlsx attachment (GET /run?...&type=csv). Consumers use it
+	// to decide whether to offer an Excel download.
+	Excel       bool           `json:"excel" bson:"excel"`
+	DataActions []*DataActions `json:"data_actions" bson:"data_actions"`
 }
 
+/*
+type can be one of the following:
+
+ 1. DATE -> Display a datetime selector
+ 2. SELECT -> static dropdown. METADATA: {"options":[{"name":"One","value":"1"}]}
+ 3. RADIO -> static radio-button group. Same METADATA shape as SELECT.
+ 4. CHECKBOX -> static multi-select checkbox group (submits repeated query
+    params under Name). Same METADATA shape as SELECT. Distinct from BOOL,
+    which is a single yes/no checkbox.
+ 5. LOOKUP -> options resolved server-side (Mongo query or NATS call) instead
+    of being static. METADATA is a LookupMetadata (embeds DataActions, plus
+    label_field/value_field/display) — see LookupMetadata / ParseLookupMetadata.
+ 6. STRING -> Normal string entry. Regexp, if set, is an HTML5 pattern the
+    value must match.
+ 7. NUMBER -> A number
+ 8. BOOL -> A single yes/no checkbox
+*/
 type ReportParams struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Required    bool   `json:"required"`
 	Type        string `json:"type"`
 	Metadata    any    `json:"metadata"`
+	// Regexp, when set, is an HTML5 pattern a STRING parameter's value must
+	// match (checked both client-side via the rendered form and server-side
+	// on /run). Ignored for every other Type.
+	Regexp string `json:"regexp"`
+}
+
+const (
+	PARAM_TYPE_LOOKUP   = "lookup"
+	PARAM_TYPE_SELECT   = "select"
+	PARAM_TYPE_RADIO    = "radio"
+	PARAM_TYPE_CHECKBOX = "checkbox"
+)
+
+// Option is one choice in a SELECT/RADIO/CHECKBOX parameter's static options,
+// or one row of a resolved LOOKUP's dynamic options.
+type Option struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// LookupMetadata is the Metadata shape for a "lookup" parameter: it reuses
+// DataActions' mongo/nats execution shape (Type/Action/Connection/Request/
+// TTL) to describe where the options come from, plus how to turn each result
+// row into an Option. v1 only supports DataActions.Type "mongo" or "nats"
+// (default) — a "js" data-action mutates a script VM context rather than
+// returning a value, so it doesn't fit "produce options".
+type LookupMetadata struct {
+	DataActions
+	LabelField string `json:"label_field"`
+	ValueField string `json:"value_field"`
+	// Display selects how the resolved options render: "select" (default),
+	// "radio" or "checkbox".
+	Display string `json:"display,omitempty"`
+}
+
+// ParseLookupMetadata round-trips a "lookup" parameter's Metadata (decoded
+// from JSON/BSON as `any`) into a LookupMetadata.
+func ParseLookupMetadata(metadata any) (*LookupMetadata, error) {
+	b, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, err
+	}
+	var lm LookupMetadata
+	if err := json.Unmarshal(b, &lm); err != nil {
+		return nil, err
+	}
+	return &lm, nil
+}
+
+// ParamOptionsRequest asks for one lookup parameter's resolved options,
+// optionally scoped by other already-known parameter values (query).
+type ParamOptionsRequest struct {
+	Report    string         `json:"report"`
+	Parameter string         `json:"parameter"`
+	Query     map[string]any `json:"query"`
+}
+
+// ParamOptionsResult is the reply to a ParamOptionsRequest.
+type ParamOptionsResult struct {
+	utils.Result
+	Options []Option `json:"options"`
+	Display string   `json:"display"`
 }
 
 const (

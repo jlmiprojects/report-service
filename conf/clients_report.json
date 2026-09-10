@@ -1,8 +1,8 @@
 {
-    "_comment": "Report definition for the clients listing. Insert this document into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table). The report reads the 'clients' collection from the 'blue-asset' database via the 'default' connection, then renders reports/clients.html. Run it with GET /run?name=clients (add &type=pdf for the PDF variant).",
+    "_comment": "Report definition for the clients listing, scoped by the caller's role. Insert into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table, i.e. blueasset.reports). Reads 'clients' from the 'broker_portal' connection (same one record_of_advice_report.json uses for clients/advisors/brokerages). advisor_id (optional) scopes to one advisor's clients; principal_id (optional, not a declared parameter -- broker-portal injects it as a hidden field alongside an 'All' advisor_id selection) scopes to every client under advisors reporting to that principal. Neither set = every client (ADMIN 'All'). The __none__/__set__ pairs are a sentinel trick so a blank param renders a no-op $or branch instead of an invalid/absent filter -- request values are only ever templated inside existing JSON string positions, never used to add/remove keys, since the request is decoded from Mongo BSON before re-marshaling and templating (see reports-service/handlers/report.go renderActionRequest). GET /run?name=clients[&advisor_id=<hex>][&principal_id=<hex>][&type=csv].",
     "name": "clients",
     "handler": "generic",
-    "description": "All records in the clients collection (blue-asset database).",
+    "description": "Clients, optionally scoped to one advisor or a principal's book.",
     "template": "clients",
     "management": false,
     "parameters": [
@@ -11,20 +11,38 @@
             "description": "Optional client status shown in the report header (ACTIVE / ARCHIVED). Display only.",
             "required": false,
             "type": "string"
+        },
+        {
+            "name": "advisor_id",
+            "description": "Scope to one advisor's clients. Rendered by broker-portal as a role-scoped picker (with an 'All' option), not a free-text field.",
+            "required": false,
+            "type": "select"
         }
     ],
     "data_actions": [
         {
             "name": "clients",
             "type": "mongo",
-            "action": "mongo.find",
-            "connection": "default",
+            "action": "mongo.aggregate",
+            "connection": "broker_portal",
             "ttl": "60s",
             "request": {
                 "collection": "clients",
-                "database": "blue-asset",
-                "sort": { "created_at": -1 },
-                "limit": 5000
+                "pipeline": [
+                    { "$match": { "$expr": { "$or": [
+                        { "$eq": ["__none__", "{{if .advisor_id}}__set__{{else}}__none__{{end}}"] },
+                        { "$eq": ["$advisor_id", { "$toObjectId": "{{if .advisor_id}}{{.advisor_id}}{{else}}000000000000000000000000{{end}}" }] }
+                    ] } } },
+                    { "$lookup": { "from": "advisors", "localField": "advisor_id", "foreignField": "_id", "as": "advisor" } },
+                    { "$unwind": { "path": "$advisor", "preserveNullAndEmptyArrays": true } },
+                    { "$match": { "$expr": { "$or": [
+                        { "$eq": ["__none__", "{{if .principal_id}}__set__{{else}}__none__{{end}}"] },
+                        { "$eq": ["$advisor.principal_id", "{{if .principal_id}}{{.principal_id}}{{else}}__unset__{{end}}"] },
+                        { "$eq": ["$advisor.user_id", { "$toObjectId": "{{if .principal_id}}{{.principal_id}}{{else}}000000000000000000000000{{end}}" }] }
+                    ] } } },
+                    { "$sort": { "created_at": -1 } },
+                    { "$limit": 5000 }
+                ]
             }
         }
     ]

@@ -22,6 +22,12 @@
             "database": "reporting",
             "connect_timeout": "30s",
             "read_timeout": "60s"
+        },
+        "broker_portal": {
+            "uri": "mongodb://localhost:27017/?maxPoolSize=20",
+            "database": "broker_portal",
+            "connect_timeout": "30s",
+            "read_timeout": "30s"
         }
     },
     "logger": {

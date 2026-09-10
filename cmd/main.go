@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"log/slog"
 
 	"blueassetgroup.com/reports-service/handlers"
@@ -50,16 +51,23 @@ func main() {
 	conns := repository.NewMongoConnections(config)
 	slog.Info("Configured mongo report connections", "names", conns.Names())
 
-	if _, err := handlers.NewHandler(ServiceVersion, nc, config, repo); err != nil {
-		panic(err)
-	}
-
 	serviceCalls, err := service.NewServiceCall(nc)
 	if err != nil {
 		panic(err)
 	}
 
-	e := handlers.NewServer(config, repo, serviceCalls, conns)
+	// Shared by both the HTTP server (full report runs) and the NATS
+	// ParamOptions endpoint (lookup-parameter resolution) so both dispatch
+	// mongo/nats DataActions through the same engine.
+	funcMap := handlers.ReportFuncMap()
+	csvRender := template.Must(template.New("").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html"))
+	reportHandler := handlers.NewReportHandler(serviceCalls, csvRender, config, funcMap, conns)
+
+	if _, err := handlers.NewHandler(ServiceVersion, nc, config, repo, reportHandler); err != nil {
+		panic(err)
+	}
+
+	e := handlers.NewServer(config, repo, funcMap, reportHandler)
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	slog.Info("Starting report http server", "addr", addr)

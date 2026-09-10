@@ -13,14 +13,15 @@ import (
 )
 
 type Handler struct {
-	nc        *nats.Conn
-	config    *utils.Config
-	service   micro.Service
-	logger    *slog.Logger
-	dataStore *repository.MongoRepository
+	nc            *nats.Conn
+	config        *utils.Config
+	service       micro.Service
+	logger        *slog.Logger
+	dataStore     *repository.MongoRepository
+	reportHandler *ReportHandler
 }
 
-func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *repository.MongoRepository) (*Handler, error) {
+func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *repository.MongoRepository, reportHandler *ReportHandler) (*Handler, error) {
 
 	var err error
 
@@ -29,6 +30,7 @@ func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *reposito
 	handler.nc = nc
 	handler.config = config
 	handler.dataStore = r
+	handler.reportHandler = reportHandler
 
 	// Setup ROOT logger for devices
 	handler.logger = slog.With("name", "reportshandler")
@@ -56,6 +58,11 @@ func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *reposito
 	}
 
 	err = handler.service.AddEndpoint("ScheduleFind", micro.HandlerFunc(handler.ScheduleFind), micro.WithEndpointSubject(utils.REPORTS_SCHEDULE_FIND))
+	if err != nil {
+		return nil, err
+	}
+
+	err = handler.service.AddEndpoint("ParamOptions", micro.HandlerFunc(handler.ParamOptions), micro.WithEndpointSubject(utils.REPORTS_PARAM_OPTIONS))
 	if err != nil {
 		return nil, err
 	}
