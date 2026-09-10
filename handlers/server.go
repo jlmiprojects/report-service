@@ -32,11 +32,13 @@ import (
 // routes. All report handlers are registered in the `globals` registry keyed by
 // the report's Handler name ("generic" today). reportHandler is shared with
 // the NATS-side Handler (see cmd/main.go) so lookup-parameter resolution
-// reuses the same DataActions engine as a full report run.
+// reuses the same yaegi ScriptRunner as a full report run.
 func NewServer(config *utils.Config, repo *repository.MongoRepository, funcMap template.FuncMap, reportHandler *ReportHandler) *echo.Echo {
 
-	renderer := &templateRenderer{
-		templates: template.Must(template.New("template").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html")),
+	renderer := &templateRenderer{templates: newTemplateReloadable(*config.TemplateDir, funcMap)}
+	// Fail fast on a broken template at startup, same as today's template.Must.
+	if _, err := renderer.templates.Get(); err != nil {
+		panic(err)
 	}
 
 	globals.AddHAndler("generic", reportHandler.Generic)
@@ -182,7 +184,12 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		ctx, cancel = chromedp.NewContext(allocatorContext)
 		defer cancel()
 
-		url := fmt.Sprintf("http://%s:%d%s?%s", "localhost", h.config.Port, c.Path(), c.QueryString())
+		host := "localhost"
+		if h.config.ChromeHost != nil {
+			host = *h.config.ChromeHost
+		}
+
+		url := fmt.Sprintf("http://%s:%d%s?%s", host, h.config.Port, c.Path(), c.QueryString())
 		slog.Info("URL is", "url", url)
 		// capture pdf
 		var buf []byte
@@ -224,11 +231,15 @@ func (h httpHandlers) management(c echo.Context) error {
 
 // templateRenderer adapts the parsed html templates to echo's Renderer.
 type templateRenderer struct {
-	templates *template.Template
+	templates *reloadable[*template.Template]
 }
 
 func (t *templateRenderer) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templates.ExecuteTemplate(w, name, data)
+	tmpl, err := t.templates.Get()
+	if err != nil {
+		return err
+	}
+	return tmpl.ExecuteTemplate(w, name, data)
 }
 
 // printToPDF is the chromedp task list that navigates to a URL and captures it

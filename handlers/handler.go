@@ -62,12 +62,7 @@ func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *reposito
 		return nil, err
 	}
 
-	err = handler.service.AddEndpoint("ParamOptions", micro.HandlerFunc(handler.ParamOptions), micro.WithEndpointSubject(utils.REPORTS_PARAM_OPTIONS))
-	if err != nil {
-		return nil, err
-	}
-
-	/*err = handler.service.AddEndpoint("RunScheduler", micro.HandlerFunc(handler.RunSchedule), micro.WithEndpointSubject(utils.REPORTS_SCHEDULE_FIND))
+	/*err = handler.service.AddEndpoint("ParamOptions", micro.HandlerFunc(handler.ParamOptions), micro.WithEndpointSubject(utils.REPORTS_PARAM_OPTIONS))
 	if err != nil {
 		return nil, err
 	}*/
@@ -199,45 +194,3 @@ func (handler Handler) ScheduleFind(req micro.Request) {
 	}
 
 }
-
-/*func (handler Handler) RunSchedule(req micro.Request) {
-
-	logger := handler.logger.With("name", "RunSchedule")
-
-	err := func() error {
-
-		schedules, err := handler.dataStore.FindAllReportSchedule()
-		if err != nil {
-			logger.Error("Failed to find all schedules", "error", err)
-			return req.RespondJSON(utils.Result{
-				StatusCode: http.StatusInternalServerError,
-				Message:    "Failed to find report Schedules ",
-				Error:      err.Error()})
-		}
-
-		weekday := time.Now().Weekday()
-
-		dayofmonth := time.Now().Day()
-
-		for _, schedule := range schedules {
-
-			if schedule.RepeatMonthly && dayofmonth == 1 {
-
-				report, err := handler.dataStore.FindByID(schedule.ReportId.Hex())
-				if err != nil {
-					handler.logger.Error("Failed to find report", "reportId", schedule.ReportId.Hex())
-					continue
-				}
-
-				report.
-					schedule.Parameters
-			}
-		}
-
-	}
-
-	if err != nil {
-		logger.Error("Failed to reply", "error", err)
-	}
-
-}*/

@@ -41,7 +41,8 @@
     "template_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/reports",
     "script_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/scripts",
     "static_dir": "./static",
-    "chrome_url": "http://localhost:9223",
+    "chrome_url": "http://127.0.0.1:9222",
+    "chrome_host": "host.docker.internal",
     "number_fields": "odo start,odo end",
     "email": {
         "host": "smtp.gmail.com",

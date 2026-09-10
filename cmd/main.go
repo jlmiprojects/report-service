@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"html/template"
 	"log/slog"
 
 	"blueassetgroup.com/reports-service/handlers"
+	"blueassetgroup.com/reports-service/reportapi"
 	"blueassetgroup.com/reports-service/repository"
 	"blueassetgroup.com/reports-service/service"
 	utils "blueassetgroup.com/reports-service/shared"
@@ -47,7 +47,7 @@ func main() {
 		panic(err)
 	}
 
-	// Named MongoDB datasources for `mongo` report data actions (opened lazily).
+	// Named MongoDB datasources report scripts can query (opened lazily).
 	conns := repository.NewMongoConnections(config)
 	slog.Info("Configured mongo report connections", "names", conns.Names())
 
@@ -56,12 +56,13 @@ func main() {
 		panic(err)
 	}
 
-	// Shared by both the HTTP server (full report runs) and the NATS
-	// ParamOptions endpoint (lookup-parameter resolution) so both dispatch
-	// mongo/nats DataActions through the same engine.
+	// Wires the shared Mongo connection registry / NATS caller that every
+	// report script's reportapi.Context reaches through (ctx.Mongo/ctx.Nats).
+	reportapi.Init(conns, serviceCalls)
+
 	funcMap := handlers.ReportFuncMap()
-	csvRender := template.Must(template.New("").Funcs(funcMap).ParseGlob(*config.TemplateDir + "/*.html"))
-	reportHandler := handlers.NewReportHandler(serviceCalls, csvRender, config, funcMap, conns)
+	scripts := handlers.NewScriptRunner(*config.ScriptDir)
+	reportHandler := handlers.NewReportHandler(config, funcMap, scripts)
 
 	if _, err := handlers.NewHandler(ServiceVersion, nc, config, repo, reportHandler); err != nil {
 		panic(err)

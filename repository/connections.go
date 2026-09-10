@@ -64,6 +64,13 @@ func (m *MongoConnections) Names() []string {
 	return names
 }
 
+// Connection returns the driver client for a named connection (blank =>
+// "default"), connecting and pinging it on first use and caching it
+// thereafter. Exported for reportapi's MongoHandle.
+func (m *MongoConnections) Connection(name string) (*mongo.Client, utils.MongoConnection, error) {
+	return m.connection(name)
+}
+
 // connection returns the driver client for a named connection, connecting and
 // pinging it on first use and caching it thereafter.
 func (m *MongoConnections) connection(name string) (*mongo.Client, utils.MongoConnection, error) {

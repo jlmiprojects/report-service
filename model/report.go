@@ -74,8 +74,11 @@ type Report struct {
 	// Excel is set when the report also has an <name>.csv template and can be
 	// rendered as an .xlsx attachment (GET /run?...&type=csv). Consumers use it
 	// to decide whether to offer an Excel download.
-	Excel       bool           `json:"excel" bson:"excel"`
-	DataActions []*DataActions `json:"data_actions" bson:"data_actions"`
+	Excel bool `json:"excel" bson:"excel"`
+	// Script names a .go file under config ScriptDir (e.g. "clients" ->
+	// <script_dir>/clients.go), interpreted via yaegi at request time to
+	// build the report's data map (see handlers.ScriptRunner).
+	Script string `json:"script" bson:"script"`
 }
 
 /*
@@ -87,9 +90,9 @@ type can be one of the following:
  4. CHECKBOX -> static multi-select checkbox group (submits repeated query
     params under Name). Same METADATA shape as SELECT. Distinct from BOOL,
     which is a single yes/no checkbox.
- 5. LOOKUP -> options resolved server-side (Mongo query or NATS call) instead
-    of being static. METADATA is a LookupMetadata (embeds DataActions, plus
-    label_field/value_field/display) — see LookupMetadata / ParseLookupMetadata.
+ 5. LOOKUP -> options resolved server-side by a yaegi script instead of being
+    static. METADATA is a LookupMetadata (script + display) — see
+    LookupMetadata / ParseLookupMetadata.
  6. STRING -> Normal string entry. Regexp, if set, is an HTML5 pattern the
     value must match.
  7. NUMBER -> A number
@@ -121,16 +124,11 @@ type Option struct {
 	Value string `json:"value"`
 }
 
-// LookupMetadata is the Metadata shape for a "lookup" parameter: it reuses
-// DataActions' mongo/nats execution shape (Type/Action/Connection/Request/
-// TTL) to describe where the options come from, plus how to turn each result
-// row into an Option. v1 only supports DataActions.Type "mongo" or "nats"
-// (default) — a "js" data-action mutates a script VM context rather than
-// returning a value, so it doesn't fit "produce options".
+// LookupMetadata is the Metadata shape for a "lookup" parameter: it names a
+// yaegi script (same reportapi.Context input a report Script gets) whose
+// Options(ctx) entry point returns the dropdown's options directly.
 type LookupMetadata struct {
-	DataActions
-	LabelField string `json:"label_field"`
-	ValueField string `json:"value_field"`
+	Script string `json:"script"`
 	// Display selects how the resolved options render: "select" (default),
 	// "radio" or "checkbox".
 	Display string `json:"display,omitempty"`
@@ -163,25 +161,6 @@ type ParamOptionsResult struct {
 	utils.Result
 	Options []Option `json:"options"`
 	Display string   `json:"display"`
-}
-
-const (
-	DATA_ACTION_NATS  = "nats"
-	DATA_ACTION_JS    = "js"
-	DATA_ACTION_MONGO = "mongo"
-)
-
-type DataActions struct {
-	Name string `json:"name" bson:"name"`
-	Type string `json:"type"`
-	// Action is the NATS subject (nats), script name (js) or mongo operation
-	// (mongo.find / mongo.aggregate) to run.
-	Action string `json:"action" bson:"action"`
-	// Connection selects a named entry from config `mongo_connections` for a
-	// `mongo` action. Blank => "default".
-	Connection string         `json:"connection" bson:"connection"`
-	Request    map[string]any `json:"request" bson:"request"`
-	TTL        string         `json:"ttl" bson:"ttl"`
 }
 
 type FindAllReportsRequest struct {

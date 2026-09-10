@@ -7,7 +7,6 @@ require (
 	github.com/chromedp/chromedp v0.11.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/google/uuid v1.6.0
-	github.com/grafana/sobek v0.0.0-20250723111835-dd8a13f0d439
 	github.com/labstack/echo-jwt/v4 v4.2.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mafredri/cdp v0.35.0
@@ -15,6 +14,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/viper v1.19.0
+	github.com/traefik/yaegi v0.16.1
 	github.com/xuri/excelize/v2 v2.10.1
 	go.mongodb.org/mongo-driver v1.17.1
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
@@ -25,16 +25,13 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect

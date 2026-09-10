@@ -13,12 +13,9 @@ type Config struct {
 	Mongo            MongoConfig                 `mapstructure:"mongo"`
 	MongoConnections map[string]*MongoConnection `mapstructure:"mongo_connections"`
 	Secret           string                      `mapstructure:"secret"`
-	UploadPath       *string                     `mapstructure:"upload_path" `
 	ImportPath       *string                     `mapstructure:"import_path"`
 	Logger           *LoggerConfig               `mapstructure:"logger"`
 	Nats             *NatsConfig                 `mapstructure:"nats"`
-	ReversLookupUrl  *string                     `mapstructure:"reverse_lookup_url"`
-	ResetPasswordUrl *string                     `mapstructure:"reset_password_url"`
 	Sms              *SmsConfig                  `mapstructure:"sms"`
 	Email            *config.EmailConfig         `mapstructure:"email"`
 	WhatsApp         *config.WhatsAppConfig      `mapstructure:"whatsapp"`
@@ -28,10 +25,10 @@ type Config struct {
 	ScriptDir    *string           `mapstructure:"script_dir"`
 	JetStream    *JetStreamConfig  `mapstructure:"jetstream"`
 	ChromeUrl    *string           `mapstructure:"chrome_url"`
+	ChromeHost   *string           `mapstructure:"chrome_host"`
 	Vas          *config.VasConfig `mapstructure:"vas"`
 	RedisConfig  *RedisConfig      `mapstructure:"redis"`
 	DefaultTtl   time.Duration     `mapstructure:"default_ttl"`
-	HRGUrl       *string           `mapstructure:"hrg_url"` // HRG is for road info lookups
 	NumberFields *string           `mapstructure:"number_fields"`
 }
 

@@ -13,10 +13,8 @@ import (
 	"time"
 
 	"blueassetgroup.com/reports-service/model"
-	"blueassetgroup.com/reports-service/repository"
-	"blueassetgroup.com/reports-service/service"
+	"blueassetgroup.com/reports-service/reportapi"
 	utils "blueassetgroup.com/reports-service/shared"
-	"github.com/grafana/sobek"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/cast"
 	"github.com/xuri/excelize/v2"
@@ -25,56 +23,15 @@ import (
 )
 
 type ReportHandler struct {
-	csvRender   *template.Template
-	serviceCall *service.ServiceCall
-	conns       *repository.MongoConnections
+	csvRender   *reloadable[*template.Template]
+	scripts     *ScriptRunner
 	funcMap     template.FuncMap
-	scriptDir   string
 	templateDir string
 }
 
-func NewReportHandler(serviceCall *service.ServiceCall, csvRender *template.Template, config *utils.Config, funcMap template.FuncMap, conns *repository.MongoConnections) *ReportHandler {
-
-	/*funcMap := template.FuncMap{
-		"parseCustomTime": func(timeStr string) (*utils.CustomTime, error) {
-
-			customTime := utils.CustomTime{}
-
-			err := customTime.Convert(timeStr)
-
-			if err != nil {
-				return nil, err
-			}
-			return &customTime, nil
-		},
-		"split": func(list string, sep string) []string {
-			return strings.Split(list, sep)
-		},
-		"convertToLocal": func(_t string) string {
-
-			date, err := time.ParseInLocation("2006-01-02T15:04:05", _t, time.Local)
-
-			if err != nil {
-				return err.Error()
-			}
-
-			return date.Format("2006-01-02 15:04:05")
-		},
-		"formatWorkingTime": func(a any) string {
-
-			totalMinutes := cast.ToInt(a)
-
-			hours := totalMinutes / 60
-			minutes := totalMinutes % 60
-			return fmt.Sprintf("%d:%02d", hours, minutes)
-
-		},
-		"mod": func(a, b int) int {
-			return a % b
-		},
-	}*/
-
-	return &ReportHandler{csvRender: csvRender, serviceCall: serviceCall, conns: conns, funcMap: funcMap, scriptDir: *config.ScriptDir, templateDir: *config.TemplateDir}
+func NewReportHandler(config *utils.Config, funcMap template.FuncMap, scripts *ScriptRunner) *ReportHandler {
+	csvRender := newTemplateReloadable(*config.TemplateDir, funcMap)
+	return &ReportHandler{csvRender: csvRender, scripts: scripts, funcMap: funcMap, templateDir: *config.TemplateDir}
 }
 
 func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName string) error {
@@ -92,9 +49,15 @@ func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName st
 		return c.Render(200, "error.html", fmt.Sprintf("Failed to open file %s", err.Error()))
 	}
 
+	csvTemplates, err := self.csvRender.Get()
+	if err != nil {
+		slog.Error("Error", "error", err)
+		return c.Render(200, "error.html", fmt.Sprintf("Failed to load csv templates %s", err.Error()))
+	}
+
 	var buf bytes.Buffer
 
-	err = self.csvRender.ExecuteTemplate(&buf, c.QueryParam("name")+".csv", data)
+	err = csvTemplates.ExecuteTemplate(&buf, c.QueryParam("name")+".csv", data)
 
 	if err != nil {
 		slog.Error("Error", "error", err)
@@ -215,163 +178,39 @@ func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName st
 
 }
 
-func (rh ReportHandler) runScript(name string, data map[string]any, query map[string]any) error {
+// flattenQuery splits echo's url.Values into a single-value map (last value
+// wins) and a repeated-value map, for reportapi.Context.Query/QueryAll.
+func flattenQuery(params map[string][]string) (map[string]string, map[string][]string) {
+	query := make(map[string]string, len(params))
+	queryAll := make(map[string][]string, len(params))
 
-	logger := slog.With("function", "runScript")
-
-	vm := sobek.New()
-
-	slog.Info("runScript", "data", data, "query", query)
-
-	vm.Set("data", data)
-	vm.Set("query", query)
-
-	vm.Set("console", map[string]interface{}{
-		"log": func(call sobek.FunctionCall) sobek.Value {
-			logger.Info("JS Console Log", "args", call.Arguments)
-			return sobek.Undefined()
-		},
-	})
-
-	logger.Info("Params", "name", name, "dir", rh.scriptDir)
-
-	b, err := os.ReadFile(fmt.Sprintf("%s/%s.js", rh.scriptDir, name))
-	if err != nil {
-		logger.Error("Failed to read file ", "error", err, "path", fmt.Sprintf("%s/%s.js", rh.scriptDir, name))
-		return err
-	}
-
-	_, err = vm.RunString(string(b))
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// renderActionRequest runs the action's Request JSON through the template
-// engine with the report's funcMap and the URL query params, so request /
-// filter / pipeline values can reference {{.profile_id}} etc. It mutates
-// action.Request in place and is a no-op for an empty request. Shared by the
-// NATS and mongo data-action paths.
-func (rh ReportHandler) renderActionRequest(report *model.Report, action *model.DataActions, query map[string]any) error {
-
-	if len(action.Request) == 0 {
-		return nil
-	}
-
-	b, err := json.Marshal(action.Request)
-	if err != nil {
-		return err
-	}
-
-	t, err := template.New(report.Name).Funcs(rh.funcMap).Option("missingkey=zero").Parse(string(b))
-	if err != nil {
-		return err
-	}
-
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, query); err != nil {
-		return err
-	}
-
-	if err := json.Unmarshal(buf.Bytes(), &action.Request); err != nil {
-		return err
-	}
-
-	if v, ok := action.Request["params"]; ok {
-		if p, ok := v.(string); ok {
-			action.Request["params"] = html.UnescapeString(p)
+	for k, v := range params {
+		queryAll[k] = v
+		if len(v) == 0 {
+			continue
 		}
+		value := v[len(v)-1]
+		if k == "params" {
+			value = strings.ReplaceAll(value, "\\", "")
+		}
+		query[k] = value
 	}
 
-	return nil
+	return query, queryAll
 }
 
 func (rh ReportHandler) Generic(c echo.Context, reportType string, report *model.Report) error {
 
 	templateName := fmt.Sprintf("%s.html", DefaultIfZero(report.TemplateName, "error"))
 
-	query := make(map[string]any)
+	query, queryAll := flattenQuery(c.QueryParams())
 
-	for k, v := range c.QueryParams() {
+	ctx := reportapi.Context{Query: query, QueryAll: queryAll, ReportName: report.Name, Now: time.Now()}
 
-		if len(v) > 1 {
-			query[k] = v
-		} else {
-
-			query[k] = v[0]
-
-			if k == "params" {
-				query[k] = strings.ReplaceAll(query[k].(string), "\\", "")
-			}
-		}
-	}
-
-	data := make(map[string]any)
-
-	for _, action := range report.DataActions {
-
-		switch action.Type {
-
-		case model.DATA_ACTION_JS:
-			// Run a script with data and query; the script can mutate data.
-			if err := rh.runScript(action.Name, data, query); err != nil {
-				return c.Render(http.StatusOK, "error.html", err)
-			}
-			continue
-
-		case model.DATA_ACTION_MONGO:
-			// Query MongoDB directly for this dataset.
-			if err := rh.renderActionRequest(report, action, query); err != nil {
-				slog.Error("Failed to render mongo request", "action", action.Action, "error", err.Error())
-				return c.Render(http.StatusOK, "error.html", err)
-			}
-
-			response, err := rh.conns.RunMongoDataAction(action)
-			if err != nil {
-				slog.Error("Failed to run mongo data action", "action", action.Action, "error", err.Error())
-				return c.Render(http.StatusOK, "error.html", err)
-			}
-
-			slog.Info("Mongo response", "action", action.Name, "count", response["count"])
-			data[action.Name] = response
-			continue
-
-		default:
-			// NATS request/reply (type "nats" or unset).
-
-			if len(action.TTL) == 0 {
-				action.TTL = "120s"
-			}
-
-			ttl, err := time.ParseDuration(action.TTL)
-			if err != nil {
-				ttl = time.Second * 120
-			}
-
-			slog.Info("TTL is ", "ttl", ttl)
-
-			action.Request["ttl"] = action.TTL
-
-			if err := rh.renderActionRequest(report, action, query); err != nil {
-				slog.Error("Failed to render request", "action", action.Action, "error", err.Error())
-				return c.Render(http.StatusOK, "error.html", err)
-			}
-
-			slog.Info("Actions is ", "action", action)
-
-			response, err := rh.serviceCall.Generic(action.Action, ttl, action.Request)
-			if err != nil {
-				slog.Error("Failed to run service", "action", action.Action, "error", err.Error())
-				return c.Render(http.StatusOK, "error.html", err)
-			}
-
-			slog.Info("Response is", "response", response)
-
-			data[action.Name] = response
-		}
+	data, err := rh.scripts.Run(report.Script, ctx)
+	if err != nil {
+		slog.Error("Failed to run report script", "script", report.Script, "error", err.Error())
+		return c.Render(http.StatusOK, "error.html", err)
 	}
 
 	slog.Debug("Data is\n\n", "data", data)
@@ -379,9 +218,9 @@ func (rh ReportHandler) Generic(c echo.Context, reportType string, report *model
 	downLoadFileName := "BlueAsset_" + c.QueryParam("name")
 
 	if reportType == "csv" {
-		return rh.buildCSV(c, map[string]interface{}{"data": data, "query": query, "now": time.Now().Format("2006-01-02 15:04:05")}, downLoadFileName)
+		return rh.buildCSV(c, map[string]interface{}{"data": data, "query": query, "now": ctx.Now.Format("2006-01-02 15:04:05")}, downLoadFileName)
 	} else {
-		return c.Render(http.StatusOK, templateName, map[string]interface{}{"data": data, "query": query, "now": time.Now().Format("2006-01-02 15:04:05")})
+		return c.Render(http.StatusOK, templateName, map[string]interface{}{"data": data, "query": query, "now": ctx.Now.Format("2006-01-02 15:04:05")})
 	}
 
 }

@@ -1,56 +1,17 @@
 {
-    "_comment": "Record of Advice report for a completed broker-portal FNA. Insert this document into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table, i.e. blueasset.reports). It reads the 'fna' collection from the 'broker_portal' database via the 'broker_portal' connection (see mongo_connections in application.json), joins the client / advisor / brokerage and the latest SUBMITTED quote linked to the FNA (quotes.fna_id), then a JS action reshapes it into data.record_of_advice for reports/record_of_advice.html. The report is 'unavailable' until a quote is linked. Run it with GET /run?name=record-of-advice&fna_id=<hex ObjectID> (add &type=pdf for the PDF variant).",
+    "_comment": "Record of Advice report for a completed broker-portal FNA. Insert this document into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table, i.e. blueasset.reports). The 'record_of_advice' script (scripts/record_of_advice.go, interpreted via yaegi at request time -- see handlers/scriptrunner.go) reads the 'fna' collection from the 'broker_portal' database via the 'broker_portal' connection (see mongo_connections in application.json), joins the client / advisor / brokerage and the latest SUBMITTED quote linked to the FNA (quotes.fna_id), and reshapes it into data.record_of_advice for reports/record_of_advice.html. The report is 'unavailable' until a quote is linked. Run it with GET /run?name=record-of-advice&fna_id=<hex ObjectID> (add &type=pdf for the PDF variant).",
     "name": "record-of-advice",
     "handler": "generic",
     "description": "FAIS Record of Advice for a completed Financial Needs Analysis.",
     "template": "record_of_advice",
     "management": false,
+    "script": "record_of_advice",
     "parameters": [
         {
             "name": "fna_id",
             "description": "The FNA _id (hex ObjectID) to produce the Record of Advice for.",
             "required": true,
             "type": "string"
-        }
-    ],
-    "data_actions": [
-        {
-            "name": "fna",
-            "type": "mongo",
-            "action": "mongo.aggregate",
-            "connection": "broker_portal",
-            "ttl": "20s",
-            "request": {
-                "collection": "fna",
-                "pipeline": [
-                    { "$match": { "$expr": { "$eq": ["$_id", { "$toObjectId": "{{.fna_id}}" }] } } },
-                    { "$limit": 1 },
-                    { "$lookup": { "from": "clients", "localField": "client_id", "foreignField": "_id", "as": "client" } },
-                    { "$unwind": { "path": "$client", "preserveNullAndEmptyArrays": true } },
-                    { "$lookup": { "from": "advisors", "localField": "advisor_id", "foreignField": "_id", "as": "advisor" } },
-                    { "$unwind": { "path": "$advisor", "preserveNullAndEmptyArrays": true } },
-                    { "$lookup": { "from": "brokerages", "localField": "advisor.brokerage_id", "foreignField": "_id", "as": "brokerage" } },
-                    { "$unwind": { "path": "$brokerage", "preserveNullAndEmptyArrays": true } },
-                    {
-                        "$lookup": {
-                            "from": "quotes",
-                            "let": { "fid": "$_id" },
-                            "pipeline": [
-                                { "$match": { "$expr": { "$and": [{ "$eq": ["$fna_id", "$$fid"] }, { "$eq": ["$status", "SUBMITTED"] }] } } },
-                                { "$sort": { "created_at": -1 } },
-                                { "$limit": 1 }
-                            ],
-                            "as": "quote"
-                        }
-                    },
-                    { "$unwind": { "path": "$quote", "preserveNullAndEmptyArrays": true } }
-                ]
-            }
-        },
-        {
-            "name": "record_of_advice",
-            "type": "js",
-            "action": "record_of_advice"
         }
     ]
 }
