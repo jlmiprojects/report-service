@@ -43,7 +43,6 @@
     "static_dir": "./static",
     "chrome_url": "http://127.0.0.1:9222",
     "chrome_host": "host.docker.internal",
-    "number_fields": "odo start,odo end",
     "email": {
         "host": "smtp.gmail.com",
         "port": 587,

@@ -1,5 +1,7 @@
-# ghcr/production build: see the Makefile's `docker` target. `Dockerfile.local`
-# is the near-identical copy local-stack/'s docker-compose.yml builds from.
+# Local docker-compose build: builds reports-service from source. Not used by
+# the ghcr/production pipeline (see Makefile's `docker` target for that) —
+# see local-stack/ in the sibling directory for the compose file that
+# references this.
 FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
