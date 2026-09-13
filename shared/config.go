@@ -16,7 +16,6 @@ type Config struct {
 	ImportPath       *string                     `mapstructure:"import_path"`
 	Logger           *LoggerConfig               `mapstructure:"logger"`
 	Nats             *NatsConfig                 `mapstructure:"nats"`
-	Sms              *SmsConfig                  `mapstructure:"sms"`
 	Email            *config.EmailConfig         `mapstructure:"email"`
 	WhatsApp         *config.WhatsAppConfig      `mapstructure:"whatsapp"`
 
@@ -26,8 +25,6 @@ type Config struct {
 	JetStream    *JetStreamConfig  `mapstructure:"jetstream"`
 	ChromeUrl    *string           `mapstructure:"chrome_url"`
 	ChromeHost   *string           `mapstructure:"chrome_host"`
-	Vas          *config.VasConfig `mapstructure:"vas"`
-	RedisConfig  *RedisConfig      `mapstructure:"redis"`
 	DefaultTtl   time.Duration     `mapstructure:"default_ttl"`
 	NumberFields *string           `mapstructure:"number_fields"`
 }

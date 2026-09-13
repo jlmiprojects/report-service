@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"blueassetgroup.com/reports-service/model"
 	"blueassetgroup.com/reports-service/reportapi"
+	utils "blueassetgroup.com/reports-service/shared"
+	"github.com/nats-io/nats.go/micro"
 )
 
 // ResolveLookup runs a "lookup" parameter's script (same reportapi.Context a
@@ -44,8 +48,6 @@ func (rh ReportHandler) ResolveLookup(report *model.Report, lm *model.LookupMeta
 	}
 	return out, nil
 }
-
-/*
 
 func (handler Handler) ParamOptions(req micro.Request) {
 
@@ -92,6 +94,8 @@ func (handler Handler) ParamOptions(req micro.Request) {
 			return req.RespondJSON(utils.MakeResult(http.StatusInternalServerError, "Failed to resolve lookup", err))
 		}
 
+		logger.Info("Values is", "options", options)
+
 		return req.RespondJSON(model.ParamOptionsResult{
 			Result:  utils.MakeResult(http.StatusOK, "OK", nil),
 			Options: options,
@@ -104,4 +108,3 @@ func (handler Handler) ParamOptions(req micro.Request) {
 		logger.Error("Failed to reply", "error", err)
 	}
 }
-*/

@@ -23,6 +23,7 @@ var allowedStdlib = []string{
 	"time/time",
 	"math/math",
 	"strconv/strconv",
+	"log/slog/slog",
 }
 
 // ScriptRunner loads, caches and runs the .go report scripts under

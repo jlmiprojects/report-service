@@ -27,6 +27,17 @@ func NewMongo(config *utils.Config) (*MongoRepository, error) {
 	bsonOpts := &options.BSONOptions{
 		UseJSONStructTags: true,
 		NilSliceAsEmpty:   true,
+		// DefaultDocumentM makes any interface{}-typed field (e.g.
+		// ReportParams.Metadata, ReportSchedule.Parameters) decode
+		// subdocuments as primitive.M (map[string]any) instead of the
+		// driver's default primitive.D (an ordered []{Key,Value} list).
+		// Without it, a JSON-marshaled Metadata like
+		// {"options":[{"name":...,"value":...}]} comes out as
+		// [{"Key":"options","Value":[...]}] over NATS — broker-portal's
+		// Parameter.Options() then can't find "options" and silently
+		// renders zero options for SELECT/RADIO/CHECKBOX, and
+		// model.ParseLookupMetadata fails to unmarshal LOOKUP metadata.
+		DefaultDocumentM: true,
 	}
 
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)

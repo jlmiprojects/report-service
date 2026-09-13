@@ -62,10 +62,10 @@ func NewHandler(version string, nc *nats.Conn, config *utils.Config, r *reposito
 		return nil, err
 	}
 
-	/*err = handler.service.AddEndpoint("ParamOptions", micro.HandlerFunc(handler.ParamOptions), micro.WithEndpointSubject(utils.REPORTS_PARAM_OPTIONS))
+	err = handler.service.AddEndpoint("ParamOptions", micro.HandlerFunc(handler.ParamOptions), micro.WithEndpointSubject(utils.REPORTS_PARAM_OPTIONS))
 	if err != nil {
 		return nil, err
-	}*/
+	}
 
 	return handler, nil
 

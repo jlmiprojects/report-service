@@ -11,7 +11,7 @@
             "name": "status",
             "description": "Optional client status shown in the report header (ACTIVE / ARCHIVED). Display only.",
             "required": false,
-            "type": "string"
+            "type": "text"
         },
         {
             "name": "advisor_id",

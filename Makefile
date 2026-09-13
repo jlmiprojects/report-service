@@ -46,3 +46,5 @@ prepare:
 docker: build
 	docker build --build-arg version=${VERSION} --build-arg ms=${BINARY} -t ${DOCKER_HUB}/${BINARY}:${VERSION} .
 	docker push ${DOCKER_HUB}/${BINARY}:${VERSION}
+run: 
+	go run cmd/main

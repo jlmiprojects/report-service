@@ -93,8 +93,9 @@ type can be one of the following:
  5. LOOKUP -> options resolved server-side by a yaegi script instead of being
     static. METADATA is a LookupMetadata (script + display) — see
     LookupMetadata / ParseLookupMetadata.
- 6. STRING -> Normal string entry. Regexp, if set, is an HTML5 pattern the
-    value must match.
+ 6. TEXT -> Normal text entry. Regexp, if set, is an HTML5 pattern the value
+    must match. "string" is an equivalent legacy value — both render the
+    same way (see broker-portal's reportParamField default case).
  7. NUMBER -> A number
  8. BOOL -> A single yes/no checkbox
 */
@@ -115,6 +116,10 @@ const (
 	PARAM_TYPE_SELECT   = "select"
 	PARAM_TYPE_RADIO    = "radio"
 	PARAM_TYPE_CHECKBOX = "checkbox"
+	PARAM_TYPE_TEXT     = "text"
+	PARAM_TYPE_NUMBER   = "number"
+	PARAM_TYPE_DATE     = "date"
+	PARAM_TYPE_BOOL     = "bool"
 )
 
 // Option is one choice in a SELECT/RADIO/CHECKBOX parameter's static options,

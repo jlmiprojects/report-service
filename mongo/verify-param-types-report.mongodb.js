@@ -27,7 +27,7 @@ db.reports.updateOne(
                     name: "reference",
                     description: "Format: three letters, dash, four digits.",
                     required: true,
-                    type: "string",
+                    type: "text",
                     regexp: "^[A-Z]{3}-[0-9]{4}$"
                 },
                 {
@@ -58,20 +58,11 @@ db.reports.updateOne(
                 },
                 {
                     name: "brokerage_id",
-                    description: "LOOKUP: resolved server-side from the brokerages collection before the dialog renders.",
+                    description: "LOOKUP: resolved server-side by the 'brokerages' yaegi script (scripts/brokerages.go), re-resolved live whenever 'country' changes.",
                     required: false,
                     type: "lookup",
                     metadata: {
-                        type: "mongo",
-                        action: "mongo.find",
-                        connection: "broker_portal",
-                        request: {
-                            collection: "brokerages",
-                            projection: { name: 1 },
-                            limit: 20
-                        },
-                        label_field: "name",
-                        value_field: "_id",
+                        script: "brokerages",
                         display: "select"
                     }
                 }
