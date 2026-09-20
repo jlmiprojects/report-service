@@ -45,7 +45,17 @@ func NewServer(config *utils.Config, repo *repository.MongoRepository, funcMap t
 
 	e := echo.New()
 	e.Renderer = renderer
-	e.Static("/reports/static", "../static")
+	// static_dir is relative to the working directory. "../static" only worked
+	// when the service was run from a subdirectory of the checkout; in the
+	// container WORKDIR is /app and the assets are at /app/static, so a
+	// hardcoded "../static" resolved to /static and every asset 404'd. Honour
+	// the config value (which was declared but never read) and default to
+	// "static" rather than "../static".
+	staticDir := "static"
+	if config.StaticDir != nil && *config.StaticDir != "" {
+		staticDir = *config.StaticDir
+	}
+	e.Static("/reports/static", staticDir)
 
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		slog.Error("Template render error", "error", err, "path", c.Request().URL.Path)
