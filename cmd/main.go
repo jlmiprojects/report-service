@@ -17,9 +17,9 @@ var ServiceVersion string
 
 func main() {
 
-	if len(ServiceVersion) == 0 {
+	//if len(ServiceVersion) == 0 {
 		ServiceVersion = "0.0.0"
-	}
+	//}
 
 	// CONFIG IS READ FROM conf/application.json (viper)
 	config, err := utils.NewConfig()
