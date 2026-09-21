@@ -86,6 +86,8 @@ func (handler Handler) FindAll(req micro.Request) {
 			return req.RespondJSON(utils.MakeResult(http.StatusBadRequest, "Failed to unmarshal request", err))
 		}
 
+		logger.Info("Received a find all request")
+
 		result, err := handler.dataStore.FindAll(request.Management)
 
 		if err != nil {
