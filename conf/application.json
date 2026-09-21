@@ -13,15 +13,9 @@
     "mongo_connections": {
         "default": {
             "uri": "mongodb://localhost:27017/?maxPoolSize=20&write=majority",
-            "database": "blueasset",
+            "database": "broker_portal",
             "connect_timeout": "30s",
             "read_timeout": "30s"
-        },
-        "analytics": {
-            "uri": "mongodb://localhost:27017/?maxPoolSize=20",
-            "database": "reporting",
-            "connect_timeout": "30s",
-            "read_timeout": "60s"
         },
         "broker_portal": {
             "uri": "mongodb://localhost:27017/?maxPoolSize=20",
