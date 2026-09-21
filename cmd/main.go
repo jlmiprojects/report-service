@@ -37,6 +37,13 @@ func main() {
 	utils.SetupLogging(ServiceVersion, config.Logger)
 	slog.Info("Logger initialized", "type", config.Logger.Type, "level", config.Logger.Level)
 
+	// Which mongo database/collections the process actually resolved, after
+	// application.json and any MONGO_* env overrides (see utils.NewConfig).
+	slog.Info("Mongo config resolved",
+		"database", config.Mongo.Database,
+		"report_table", config.Mongo.ReportTable,
+		"report_schedule_table", config.Mongo.ReportScheduleTable)
+
 	nc, err := nats.Connect(config.Nats.Uri, nats.Name("report-client"), nats.Token(config.Nats.Token))
 	if err != nil {
 		panic(err)

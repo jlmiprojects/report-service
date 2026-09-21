@@ -52,6 +52,13 @@ func main() {
 
 	slog.Info("Logger is initialized")
 
+	// Which mongo database/collections the process actually resolved, after
+	// application.json and any MONGO_* env overrides (see utils.NewConfig).
+	slog.Info("Mongo config resolved",
+		"database", config.Mongo.Database,
+		"report_table", config.Mongo.ReportTable,
+		"report_schedule_table", config.Mongo.ReportScheduleTable)
+
 	repo, err = repository.NewMongo(config)
 
 	if err != nil {
