@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-
+        "log/slog"
 	"blueassetgroup.com/reports-service/model"
 	utils "blueassetgroup.com/reports-service/shared"
 	"go.mongodb.org/mongo-driver/bson"
@@ -67,6 +67,8 @@ func (r MongoRepository) FindAll(management bool) ([]*model.Report, error) {
 
 	db := r.client.Database(r.Config.Mongo.Database)
 	coll := db.Collection(r.Config.Mongo.ReportTable)
+
+	slog.Info("DB Config is " , "config",r.Config.Mongo)
 
 	c, err := coll.Find(ctx, bson.M{"management": management}, nil)
 	if err != nil {
