@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,15 +15,23 @@ import (
 	"blueassetgroup.com/reports-service/model"
 	"blueassetgroup.com/reports-service/repository"
 	utils "blueassetgroup.com/reports-service/shared"
-	"blueassetgroup.com/reports-service/shared/client"
 	"blueassetgroup.com/reports-service/shared/config"
-	"github.com/nats-io/nats.go"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"gopkg.in/gomail.v2"
 )
 
+// A schedule's recipient is a BluHive profile; their email is read straight
+// from BluHive's profiles collection through this mongo_connections entry.
+const (
+	profileConnection = "broker_portal"
+	profileCollection = "profiles"
+)
+
 var (
-	repo *repository.MongoRepository
-	nc   *nats.Conn
+	repo  *repository.MongoRepository
+	conns *repository.MongoConnections
 )
 
 func main() {
@@ -36,16 +46,6 @@ func main() {
 
 	if config.Logger == nil {
 		config.Logger = &utils.LoggerConfig{Type: "json", Level: "DEBUG"}
-	}
-
-	if config.Nats == nil {
-		config.Nats = &utils.NatsConfig{Uri: "nats://localhost:4222"}
-	}
-
-	nc, err = nats.Connect(config.Nats.Uri, nats.Name("report-client"), nats.Token(config.Nats.Token))
-
-	if err != nil {
-		panic(err)
 	}
 
 	utils.SetupLogging("0.0.0", config.Logger)
@@ -64,6 +64,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	conns = repository.NewMongoConnections(config)
 
 	t := time.Now().Format("15:04")
 
@@ -93,16 +95,16 @@ func main() {
 }
 func sendEmail(name string, profileId string, downloadfile string, conf *config.EmailConfig) error {
 
-	profile, err := client.GetProfileById(nc, profileId)
+	email, err := recipientEmail(profileId)
 
 	if err != nil {
-		slog.Error("Failed to find the profile. for id ", "profileid", profile)
+		slog.Error("Failed to find the recipient's email", "profileid", profileId, "error", err)
 		return err
 	}
 
 	slog.Info("Sending Email", "host", conf.Host,
 		"port", conf.Port,
-		"from", conf.From, "to", profile.Email, "subject", "Report for "+name, "message", "Plase find attached report")
+		"from", conf.From, "to", email, "subject", "Report for "+name, "message", "Plase find attached report")
 
 	d := gomail.NewDialer(conf.Host, conf.Port,
 		conf.UserName, conf.Password)
@@ -111,7 +113,7 @@ func sendEmail(name string, profileId string, downloadfile string, conf *config.
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", conf.From)
-	m.SetHeader("To", profile.Email)
+	m.SetHeader("To", email)
 	//m.SetAddressHeader("Cc", "dan@example.com", "Dan")
 	m.SetHeader("Subject", "Report for "+name)
 	m.SetBody("text/html", "Please find attached report")
@@ -124,6 +126,41 @@ func sendEmail(name string, profileId string, downloadfile string, conf *config.
 
 	return nil
 }
+
+// recipientEmail looks up a BluHive profile's email address by its id.
+func recipientEmail(profileID string) (string, error) {
+	oid, err := primitive.ObjectIDFromHex(profileID)
+	if err != nil {
+		return "", fmt.Errorf("invalid profile id %q: %w", profileID, err)
+	}
+
+	client, def, err := conns.Connection(profileConnection)
+	if err != nil {
+		return "", err
+	}
+
+	timeout := def.ReadTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var profile struct {
+		Email string `bson:"email"`
+	}
+	err = client.Database(def.Database).Collection(profileCollection).
+		FindOne(ctx, bson.M{"_id": oid}, options.FindOne().SetProjection(bson.M{"email": 1})).
+		Decode(&profile)
+	if err != nil {
+		return "", err
+	}
+	if profile.Email == "" {
+		return "", errors.New("profile has no email address")
+	}
+	return profile.Email, nil
+}
+
 func runReport(schedule *model.ReportSchedule, conf *config.EmailConfig, _type string) error {
 	slog.Info("Running report", "id", schedule.ID)
 

@@ -105,14 +105,3 @@ func getJSONFieldName(d any, fieldName string) string {
 
 	return tag
 }
-
-func MakeError(e, v string) *ValidationError {
-
-	res := ValidationError{}
-
-	res.Field = e
-	res.Message = v
-
-	return &res
-
-}

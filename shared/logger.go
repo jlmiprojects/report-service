@@ -35,9 +35,3 @@ func SetupLogging(version string, l *LoggerConfig) {
 	}
 
 }
-
-func HandleErr(logger *slog.Logger, err error) {
-	if err != nil {
-		logger.Error("Failed", "error", err)
-	}
-}

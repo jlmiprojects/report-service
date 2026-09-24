@@ -9,9 +9,3 @@ type EmailConfig struct {
 	DownloadDir string `mapstructure:"download_dir"`
 	ReportUrl   string `mapstructure:"report_url"`
 }
-
-type WhatsAppConfig struct {
-	URL   string `mapstructure:"url"`
-	Token string `mapstructure:"token"`
-	From  string `mapstructure:"from"`
-}

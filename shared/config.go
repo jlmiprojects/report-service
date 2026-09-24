@@ -2,7 +2,6 @@ package utils
 
 import (
 	"strings"
-	"time"
 
 	"blueassetgroup.com/reports-service/shared/config"
 	"github.com/spf13/viper"
@@ -13,21 +12,15 @@ type Config struct {
 	Host             string                      `mapstructure:"host"`
 	Mongo            MongoConfig                 `mapstructure:"mongo"`
 	MongoConnections map[string]*MongoConnection `mapstructure:"mongo_connections"`
-	Secret           string                      `mapstructure:"secret"`
-	ImportPath       *string                     `mapstructure:"import_path"`
 	Logger           *LoggerConfig               `mapstructure:"logger"`
 	Nats             *NatsConfig                 `mapstructure:"nats"`
 	Email            *config.EmailConfig         `mapstructure:"email"`
-	WhatsApp         *config.WhatsAppConfig      `mapstructure:"whatsapp"`
 
-	TemplateDir  *string           `mapstructure:"template_dir"`
-	StaticDir    *string           `mapstructure:"static_dir"`
-	ScriptDir    *string           `mapstructure:"script_dir"`
-	JetStream    *JetStreamConfig  `mapstructure:"jetstream"`
-	ChromeUrl    *string           `mapstructure:"chrome_url"`
-	ChromeHost   *string           `mapstructure:"chrome_host"`
-	DefaultTtl   time.Duration     `mapstructure:"default_ttl"`
-	NumberFields *string           `mapstructure:"number_fields"`
+	TemplateDir *string `mapstructure:"template_dir"`
+	StaticDir   *string `mapstructure:"static_dir"`
+	ScriptDir   *string `mapstructure:"script_dir"`
+	ChromeUrl   *string `mapstructure:"chrome_url"`
+	ChromeHost  *string `mapstructure:"chrome_host"`
 }
 
 // NewConfig loads conf/application.json into a Config via viper, mirroring the
@@ -49,8 +42,7 @@ type Config struct {
 //	port / host / chrome_url            -> PORT / HOST / CHROME_URL
 //
 // Two limits come with AutomaticEnv: only keys that are already present in
-// application.json can be overridden (a key the file omits -- secret,
-// whatsapp.*, jetstream.*, default_ttl, number_fields today -- is invisible to
+// application.json can be overridden (a key the file omits is invisible to
 // viper), and mongo_connections overrides only reach connections the file
 // declares; env cannot add a new named connection.
 func NewConfig() (*Config, error) {
