@@ -6,3 +6,4 @@ build-errors.log
 /cmd/cmd
 /scheduler/scheduler
 node_modules/
+reports/

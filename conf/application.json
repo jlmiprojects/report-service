@@ -13,15 +13,9 @@
     "mongo_connections": {
         "default": {
             "uri": "mongodb://localhost:27017/?maxPoolSize=20&write=majority",
-            "database": "blueasset",
+            "database": "broker_portal",
             "connect_timeout": "30s",
             "read_timeout": "30s"
-        },
-        "analytics": {
-            "uri": "mongodb://localhost:27017/?maxPoolSize=20",
-            "database": "reporting",
-            "connect_timeout": "30s",
-            "read_timeout": "60s"
         },
         "broker_portal": {
             "uri": "mongodb://localhost:27017/?maxPoolSize=20",
@@ -38,8 +32,8 @@
         "uri": "nats://localhost:4222",
         "token": "s3cr3t"
     },
-    "template_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/reports",
-    "script_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/scripts",
+    "template_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/reports/templates",
+    "script_dir": "/Users/oosthuja/Development/blueassetgroup.com/reports-service/reports/scripts",
     "static_dir": "./static",
     "chrome_url": "http://127.0.0.1:9222",
     "chrome_host": "host.docker.internal",
