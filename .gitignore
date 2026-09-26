@@ -7,3 +7,4 @@ build-errors.log
 /scheduler/scheduler
 node_modules/
 reports/
+.claude/settings.local.json
