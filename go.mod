@@ -6,7 +6,6 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20241110205750-a72e6703cd9b
 	github.com/chromedp/chromedp v0.11.2
 	github.com/dustin/go-humanize v1.0.1
-	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mafredri/cdp v0.35.0
 	github.com/nats-io/nats.go v1.37.0

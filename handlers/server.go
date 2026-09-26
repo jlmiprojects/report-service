@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -21,7 +19,6 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/dustin/go-humanize"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/mafredri/cdp/devtool"
 	"github.com/spf13/cast"
@@ -161,38 +158,30 @@ func (h httpHandlers) runReport(c echo.Context) error {
 
 	} else if _type == "pdf" {
 
-		urlstr := h.config.ChromeUrl
-
-		slog.Info("Chrome URL", "url", h.config.ChromeUrl)
-
-		//defer cancel()
-
-		ctx := context.Background()
-		devTools := devtool.New(*urlstr)
-		pt, err := devTools.Get(ctx, devtool.Page)
-		if err != nil {
-			pt, err = devTools.Create(ctx)
-			if err != nil {
-				panic(err)
-			}
+		if h.config.ChromeUrl == nil {
+			slog.Error("Chrome URL is not configured", "name", name)
+			return c.Render(http.StatusOK, "error.html", "Chrome URL is not configured")
 		}
 
-		var opts []chromedp.ContextOption
-		opts = append(opts, chromedp.WithDebugf(log.Printf))
+		slog.Info("Chrome URL", "url", *h.config.ChromeUrl)
 
-		slog.Info(pt.WebSocketDebuggerURL)
+		// Bound the whole render; also aborts if the client disconnects.
+		reqCtx, cancelReq := context.WithTimeout(c.Request().Context(), 60*time.Second)
+		defer cancelReq()
 
-		allocatorContext, cancel := chromedp.NewRemoteAllocator(context.Background(), pt.WebSocketDebuggerURL)
-		defer cancel()
-
+		// Connect at the browser level so chromedp.NewContext opens a fresh tab
+		// per request (and closes it on cancel) instead of sharing one page.
+		ver, err := devtool.New(*h.config.ChromeUrl).Version(reqCtx)
 		if err != nil {
-			slog.Error("Failed to create remote allocator for chrome", "error", err, "name", name)
-			return c.Render(http.StatusOK, "error.html", err)
-
+			slog.Error("Failed to connect to chrome", "error", err, "name", name)
+			return c.Render(http.StatusOK, "error.html", fmt.Sprintf("Failed to connect to chrome %s", err.Error()))
 		}
 
-		ctx, cancel = chromedp.NewContext(allocatorContext)
-		defer cancel()
+		allocatorContext, cancelAlloc := chromedp.NewRemoteAllocator(reqCtx, ver.WebSocketDebuggerURL)
+		defer cancelAlloc()
+
+		ctx, cancelTab := chromedp.NewContext(allocatorContext)
+		defer cancelTab()
 
 		host := "localhost"
 		if h.config.ChromeHost != nil {
@@ -212,16 +201,9 @@ func (h httpHandlers) runReport(c echo.Context) error {
 			return c.Render(http.StatusOK, "error.html", fmt.Sprintf("Failed to render %s", err.Error()))
 		}
 
-		uuid := uuid.New()
-
-		fileName := fmt.Sprintf("/tmp/%s_%s.pdf", uuid.String(), c.QueryParam("name"))
-
-		if err := os.WriteFile(fileName, buf, 0o644); err != nil {
-			slog.Error("Error", "error", err)
-			return c.Render(200, "error.html", err.Error())
-
-		}
-		err = c.Attachment(fileName, c.QueryParam("name")+".pdf")
+		c.Response().Header().Set(echo.HeaderContentDisposition,
+			fmt.Sprintf("attachment; filename=%q", c.QueryParam("name")+".pdf"))
+		err = c.Blob(http.StatusOK, "application/pdf", buf)
 	} else {
 		err = errors.New("type is not correctly set only options are csv | pdf | html")
 	}
@@ -258,7 +240,7 @@ func printToPDF(urlstr string, res *[]byte) chromedp.Tasks {
 	return chromedp.Tasks{
 		chromedp.Navigate(urlstr),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			buf, _, err := page.PrintToPDF().WithPrintBackground(false).Do(ctx)
+			buf, _, err := page.PrintToPDF().WithPrintBackground(true).Do(ctx)
 			if err != nil {
 				return err
 			}
