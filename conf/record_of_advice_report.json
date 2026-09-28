@@ -9,9 +9,13 @@
     "parameters": [
         {
             "name": "fna_id",
-            "description": "The FNA _id (hex ObjectID) to produce the Record of Advice for.",
+            "description": "The FNA to produce the Record of Advice for. A lookup (scripts/fnas.go) of the FNAs in the caller's book that have a submitted quote; the value is the FNA _id (hex ObjectID).",
             "required": true,
-            "type": "string"
+            "type": "lookup",
+            "metadata": {
+                "script": "fnas",
+                "display": "select"
+            }
         }
     ]
 }
