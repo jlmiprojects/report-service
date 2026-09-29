@@ -1,10 +1,11 @@
 {
-    "_comment": "Report definition for the clients listing, scoped by the caller's role. Insert into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table, i.e. blueasset.reports). The 'clients' script (scripts/clients.go, interpreted via yaegi at request time -- see handlers/scriptrunner.go) reads 'clients' from the 'broker_portal' connection (same one record_of_advice_report.json uses for clients/advisors/brokerages). advisor_id (optional) scopes to one advisor's clients; principal_id (optional, not a declared parameter -- broker-portal injects it as a hidden field alongside an 'All' advisor_id selection) scopes to every client under advisors reporting to that principal. Neither set = every client (ADMIN 'All'). GET /run?name=clients[&advisor_id=<hex>][&principal_id=<hex>][&type=csv].",
+    "_comment": "Report definition for the clients listing, scoped by the caller's role. Insert into the 'reports' collection of the primary mongo database (application.json -> mongo.database / mongo.report_table, i.e. blueasset.reports). The 'clients' script (scripts/clients.go, interpreted via yaegi at request time -- see handlers/scriptrunner.go) reads 'clients' from the 'broker_portal' connection (same one record_of_advice_report.json uses for clients/advisors/brokerages). advisor_id (optional) scopes to one advisor's clients; principal_id (optional, not a declared parameter -- broker-portal injects it as a hidden field alongside an 'All' advisor_id selection) scopes to every client under advisors reporting to that principal. Neither set = every client (ADMIN 'All'). GET /run?name=clients[&advisor_id=<hex>][&principal_id=<hex>][&type=csv]. 'excel': true because templates/clients.csv.html defines the Excel sheet (type=csv returns it as .xlsx).",
     "name": "clients",
     "handler": "generic",
     "description": "Clients, optionally scoped to one advisor or a principal's book.",
     "template": "clients",
     "management": false,
+    "excel": true,
     "script": "clients",
     "parameters": [
         {

@@ -7,6 +7,7 @@ import (
 	"html"
 	"html/template"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"strings"
@@ -34,20 +35,10 @@ func NewReportHandler(config *utils.Config, funcMap template.FuncMap, scripts *S
 	return &ReportHandler{csvRender: csvRender, scripts: scripts, funcMap: funcMap, templateDir: *config.TemplateDir}
 }
 
+// xlsxContentType is the media type of the workbook buildCSV sends.
+const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName string) error {
-
-	fileName := fmt.Sprintf("/tmp/%s_%s.csv", c.QueryParam("profile_id"), c.QueryParam("name"))
-
-	f, err := os.Create(fileName)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if err != nil {
-		slog.Error("Error", "error", err)
-		return c.Render(200, "error.html", fmt.Sprintf("Failed to open file %s", err.Error()))
-	}
 
 	csvTemplates, err := self.csvRender.Get()
 	if err != nil {
@@ -167,14 +158,17 @@ func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName st
 
 	ef.SetActiveSheet(index)
 
-	_, err = ef.WriteTo(f)
+	// Built in memory and sent with its real type: c.Attachment on a temp file
+	// guessed the type from the file's name, which was .csv.
+	out, err := ef.WriteToBuffer()
 
 	if err != nil {
 		slog.Error("Error", "error", err)
 		return c.Render(200, "error.html", fmt.Sprintf("Failed to create excell sheet %s", err.Error()))
 	}
 
-	return c.Attachment(fileName, downLoadFileName+".xlsx")
+	c.Response().Header().Set(echo.HeaderContentDisposition, mime.FormatMediaType("attachment", map[string]string{"filename": downLoadFileName + ".xlsx"}))
+	return c.Blob(http.StatusOK, xlsxContentType, out.Bytes())
 
 }
 
