@@ -15,7 +15,7 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const cssPath = path.join(root, 'static', 'output.css');
-const outPath = path.join(root, 'reports', 'styles.partial.html');
+const outPath = path.join(root, 'reports', 'templates', 'styles.partial.html');
 
 const css = fs.readFileSync(cssPath, 'utf8').trimEnd();
 

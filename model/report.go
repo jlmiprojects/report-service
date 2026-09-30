@@ -37,8 +37,13 @@ type FillStyle struct {
 }
 
 type ExcelReporCell struct {
-	Value  any            `json:"value"`
-	Type   string         `json:"type"` // string, int, float, date
+	Value any `json:"value"`
+	// Type is string, int, float, date or money (Value in cents, shown in
+	// Currency). See handlers.buildWorkbook.
+	Type     string `json:"type"`
+	Currency string `json:"currency,omitempty"`
+	// Format is an Excel number format that replaces the type's own.
+	Format string         `json:"format,omitempty"`
 	Border []*BorderStyle `json:"border,omitempty"`
 	Font   *FontStyle     `json:"font"`
 	Fill   *FillStyle     `json:"fill"`
@@ -54,6 +59,14 @@ type ExcelReport struct {
 	Rows       [][]ExcelReporCell `json:"rows"`
 	Footer     string             `json:"footer"`
 	PageLayout PageLayout         `json:"page_layout"`
+	// FreezeRows keeps the first rows (a header) in view while scrolling.
+	FreezeRows int `json:"freeze_rows,omitempty"`
+	// ColumnWidths sets widths by column, in characters; 0 or missing sizes
+	// the column to its content.
+	ColumnWidths []float64 `json:"column_widths,omitempty"`
+	// FileName is the download's name without extension; default
+	// BlueAsset_<report name>.
+	FileName string `json:"file_name,omitempty"`
 }
 
 func (er *ExcelReport) FromJSON(b []byte) error {

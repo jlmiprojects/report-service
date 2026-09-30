@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/mafredri/cdp/devtool"
 	"github.com/spf13/cast"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // newServer wires the echo HTTP server: the html/csv template renderer, the
@@ -85,7 +87,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 
 	if len(name) == 0 {
 		slog.Error("Name not optional")
-		return c.Render(http.StatusOK, "error.html", errors.New("name is not optional for now"))
+		return renderError(c, http.StatusBadRequest, errors.New("name is not optional for now"))
 	}
 
 	_type := "html"
@@ -100,7 +102,11 @@ func (h httpHandlers) runReport(c echo.Context) error {
 
 	if err != nil {
 		slog.Error("Failed to find report", "error", err, "name", name)
-		return c.Render(http.StatusOK, "error.html", fmt.Errorf("Failed to find report with name %s, %w", name, err))
+		status := http.StatusInternalServerError
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			status = http.StatusNotFound
+		}
+		return renderError(c, status, fmt.Errorf("Failed to find report with name %s, %w", name, err))
 
 	}
 
@@ -109,7 +115,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		if p.Required && !c.QueryParams().Has(p.Name) {
 			err = fmt.Errorf("Parameter %s is not optional", p.Name)
 			slog.Error("Not optional", "error", err, "name", name)
-			return c.Render(http.StatusOK, "error.html", err)
+			return renderError(c, http.StatusBadRequest, err)
 
 		}
 
@@ -123,7 +129,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 				if !re.MatchString(v) {
 					err = fmt.Errorf("Parameter %s value %q does not match the required pattern", p.Name, v)
 					slog.Error("Regexp mismatch", "error", err, "name", name)
-					return c.Render(http.StatusOK, "error.html", err)
+					return renderError(c, http.StatusBadRequest, err)
 				}
 			}
 		}
@@ -141,7 +147,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		handler, exist := globals.GetHandler(handlerName)
 		if !exist {
 			slog.Error("Failed to get handler", "error", "Handler does not exist for report", "name", handlerName)
-			return c.Render(http.StatusOK, "error.html", err)
+			return renderError(c, http.StatusInternalServerError, fmt.Errorf("no handler %q for report %s", handlerName, name))
 		}
 
 		return handler(c, _type, report)
@@ -151,7 +157,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		handler, exist := globals.GetHandler(handlerName)
 		if !exist {
 			slog.Error("Failed to get handler", "error", "Handler does not exist for report", "name", handlerName)
-			return c.Render(http.StatusOK, "error.html", err)
+			return renderError(c, http.StatusInternalServerError, fmt.Errorf("no handler %q for report %s", handlerName, name))
 		}
 
 		return handler(c, _type, report)
@@ -160,7 +166,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 
 		if h.config.ChromeUrl == nil {
 			slog.Error("Chrome URL is not configured", "name", name)
-			return c.Render(http.StatusOK, "error.html", "Chrome URL is not configured")
+			return renderError(c, http.StatusServiceUnavailable, "Chrome URL is not configured")
 		}
 
 		slog.Info("Chrome URL", "url", *h.config.ChromeUrl)
@@ -174,7 +180,7 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		ver, err := devtool.New(*h.config.ChromeUrl).Version(reqCtx)
 		if err != nil {
 			slog.Error("Failed to connect to chrome", "error", err, "name", name)
-			return c.Render(http.StatusOK, "error.html", fmt.Sprintf("Failed to connect to chrome %s", err.Error()))
+			return renderError(c, http.StatusServiceUnavailable, fmt.Sprintf("Failed to connect to chrome %s", err.Error()))
 		}
 
 		allocatorContext, cancelAlloc := chromedp.NewRemoteAllocator(reqCtx, ver.WebSocketDebuggerURL)
@@ -196,16 +202,29 @@ func (h httpHandlers) runReport(c echo.Context) error {
 		url = strings.ReplaceAll(url, "type=pdf", "type=html")
 
 		slog.Info("URL for chrome", "url", url)
-		if err := chromedp.Run(ctx, printToPDF(url, &buf)); err != nil {
+
+		// Load the HTML version first and look at how it answered: an error
+		// page (a failed or refused report) must fail the PDF too, not be
+		// printed as if it were the report.
+		resp, err := chromedp.RunResponse(ctx, chromedp.Navigate(url))
+		if err != nil {
 			slog.Error("Error Running Chrome", "error", err)
-			return c.Render(http.StatusOK, "error.html", fmt.Sprintf("Failed to render %s", err.Error()))
+			return renderError(c, http.StatusBadGateway, fmt.Sprintf("Failed to render %s", err.Error()))
+		}
+		if status, ok := pdfPageStatus(resp.Status); !ok {
+			slog.Error("The report page failed, not printing it", "name", name, "page_status", resp.Status)
+			return renderError(c, status, fmt.Sprintf("The report could not be produced (its page answered %d %s).", resp.Status, resp.StatusText))
+		}
+		if err := chromedp.Run(ctx, printToPDF(&buf)); err != nil {
+			slog.Error("Error Running Chrome", "error", err)
+			return renderError(c, http.StatusBadGateway, fmt.Sprintf("Failed to render %s", err.Error()))
 		}
 
 		c.Response().Header().Set(echo.HeaderContentDisposition,
 			fmt.Sprintf("attachment; filename=%q", c.QueryParam("name")+".pdf"))
 		err = c.Blob(http.StatusOK, "application/pdf", buf)
 	} else {
-		err = errors.New("type is not correctly set only options are csv | pdf | html")
+		return renderError(c, http.StatusBadRequest, errors.New("type is not correctly set only options are csv | pdf | html"))
 	}
 
 	if err != nil {
@@ -234,11 +253,9 @@ func (t *templateRenderer) Render(w io.Writer, name string, data interface{}, c 
 	return tmpl.ExecuteTemplate(w, name, data)
 }
 
-// printToPDF is the chromedp task list that navigates to a URL and captures it
-// as a PDF into res.
-func printToPDF(urlstr string, res *[]byte) chromedp.Tasks {
+// printToPDF captures the page the tab has loaded as a PDF into res.
+func printToPDF(res *[]byte) chromedp.Tasks {
 	return chromedp.Tasks{
-		chromedp.Navigate(urlstr),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			buf, _, err := page.PrintToPDF().WithPrintBackground(true).Do(ctx)
 			if err != nil {
@@ -340,5 +357,33 @@ func ReportFuncMap() template.FuncMap {
 		"fixString": func(s string) string {
 			return strings.ReplaceAll(strings.ReplaceAll(s, "\\N", ""), "\t", "")
 		},
+		"money": formatMoney,
+		"pct":   formatPct,
 	}
+}
+
+// formatMoney shows cents in a currency: "R 1 234.56" for ZAR (or no
+// currency), "USD 1 234.56" otherwise, with a space every three digits —
+// the broker portal's own style. Money in the portal's collections is whole
+// cents (models.Money), so cents is anything that casts to an int64.
+func formatMoney(cents any, currency string) string {
+	n := cast.ToInt64(cents)
+	sign := ""
+	if n < 0 {
+		sign, n = "-", -n
+	}
+	digits := strconv.FormatInt(n/100, 10)
+	var b strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteRune(d)
+	}
+	return fmt.Sprintf("%s %s%s.%02d", currencySymbol(currency), sign, b.String(), n%100)
+}
+
+// formatPct shows a percentage without trailing zeros: "2.1%", "70%".
+func formatPct(v any) string {
+	return strconv.FormatFloat(cast.ToFloat64(v), 'f', -1, 64) + "%"
 }

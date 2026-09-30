@@ -10,7 +10,7 @@
 // clients_report.json / record_of_advice_report.json use), since the
 // "brokerage" lookup below queries its `brokerages` collection.
 
-use("blueasset");
+use("broker_portal");
 
 db.reports.updateOne(
     { name: "verify-param-types" },

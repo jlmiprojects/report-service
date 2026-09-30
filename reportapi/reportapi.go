@@ -330,3 +330,22 @@ func mongoifyValue(v any) any {
 		return v
 	}
 }
+
+// ---- script errors ------------------------------------------------------------
+
+// NotAvailableError is what a script returns when there is nothing it may
+// show the caller: no scope, someone else's record, or nothing in the range
+// asked for. reports-service answers it with 403 and Reason, so a refused
+// report can never be mistaken for a produced one.
+type NotAvailableError struct {
+	Reason string
+}
+
+func (e *NotAvailableError) Error() string { return e.Reason }
+
+// NotAvailable is the error a script returns (`return nil,
+// reportapi.NotAvailable("…")`) when the report isn't available to the
+// caller; reason is shown to them.
+func NotAvailable(reason string) error {
+	return &NotAvailableError{Reason: reason}
+}

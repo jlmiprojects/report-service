@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html"
 	"html/template"
 	"log/slog"
 	"mime"
@@ -17,7 +16,6 @@ import (
 	"blueassetgroup.com/reports-service/reportapi"
 	utils "blueassetgroup.com/reports-service/shared"
 	"github.com/labstack/echo/v4"
-	"github.com/spf13/cast"
 	"github.com/xuri/excelize/v2"
 
 	_ "image/png"
@@ -38,138 +36,45 @@ func NewReportHandler(config *utils.Config, funcMap template.FuncMap, scripts *S
 // xlsxContentType is the media type of the workbook buildCSV sends.
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-func (self ReportHandler) buildCSV(c echo.Context, data any, downLoadFileName string) error {
-
+// buildCSV renders the report's Excel template — {{define "<template>.csv"}},
+// or "<name>.csv" for a report without a template name — and sends the
+// workbook it describes (see buildWorkbook).
+func (self ReportHandler) buildCSV(c echo.Context, report *model.Report, data any, downLoadFileName string) error {
 	csvTemplates, err := self.csvRender.Get()
 	if err != nil {
 		slog.Error("Error", "error", err)
-		return c.Render(200, "error.html", fmt.Sprintf("Failed to load csv templates %s", err.Error()))
+		return renderError(c, http.StatusInternalServerError, fmt.Sprintf("Failed to load csv templates %s", err.Error()))
+	}
+
+	name := report.TemplateName + ".csv"
+	if report.TemplateName == "" || csvTemplates.Lookup(name) == nil {
+		name = report.Name + ".csv"
 	}
 
 	var buf bytes.Buffer
-
-	err = csvTemplates.ExecuteTemplate(&buf, c.QueryParam("name")+".csv", data)
-
-	if err != nil {
+	if err := csvTemplates.ExecuteTemplate(&buf, name, data); err != nil {
 		slog.Error("Error", "error", err)
-		return c.Render(200, "error.html", fmt.Sprintf("Failed to render %s", err.Error()))
+		return renderError(c, http.StatusInternalServerError, fmt.Sprintf("Failed to render %s", err.Error()))
 	}
-
-	//csvreader := csv.NewReader(&buf)
-	//csvreader.LazyQuotes = true
-
-	slog.Info("CSV", "csv", buf.String())
-
-	ef := excelize.NewFile()
-
-	index, err := ef.NewSheet(c.QueryParam("name"))
-	if err != nil {
-		slog.Error("Error", "error", err)
-		return c.Render(200, "error.html", fmt.Sprintf("Failed to create excell sheet %s", err.Error()))
-	}
-
-	ef.DeleteSheet("Sheet1")
-
-	v := false
-	margin := 1.5
-	leftmargin := 0.5
-
-	/*orientation := "portrait"
-	fitToWidth := 1
-
-	ef.SetPageLayout(c.QueryParam("name"), &excelize.PageLayoutOptions{
-		Orientation: &orientation,
-		FitToWidth:  &fitToWidth,
-	})*/
-
-	ef.SetSheetProps(c.QueryParam("name"), &excelize.SheetPropsOptions{FitToPage: &v})
-	ef.SetPageMargins(c.QueryParam("name"), &excelize.PageLayoutMarginsOptions{
-		Top:    &margin,
-		Bottom: &margin,
-		Left:   &leftmargin,
-	})
-
-	columns := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "0", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
 
 	excell := new(model.ExcelReport)
-
-	d := strings.ReplaceAll(buf.String(), "\n", "")
-
-	err = excell.FromJSON([]byte(d))
-	if err != nil {
-		return err
+	if err := excell.FromJSON([]byte(strings.ReplaceAll(buf.String(), "\n", ""))); err != nil {
+		slog.Error("The Excel template did not render valid JSON", "template", name, "error", err)
+		return renderError(c, http.StatusInternalServerError, fmt.Sprintf("Failed to read the Excel template %s: %s", name, err.Error()))
 	}
 
-	fileBytes, err := os.ReadFile(self.templateDir + "/logo.png")
-
-	if err == nil {
-		err = ef.AddHeaderFooterImage(c.QueryParam("name"), &excelize.HeaderFooterImageOptions{
-			Position:  excelize.HeaderFooterImagePositionRight,
-			Extension: ".png",
-			Width:     "120pt",
-			Height:    "30pt",
-			File:      fileBytes,
-			IsFooter:  false,
-
-			//FirstPage: true,
-		})
-
-		if err != nil {
-			slog.Error("Failed to add images header ", "error", err)
-		}
-	}
-
-	err = ef.SetHeaderFooter(c.QueryParam("name"), &excelize.HeaderFooterOptions{
-		DifferentFirst:   false,
-		DifferentOddEven: false,
-		OddHeader:        excell.Header,
-		OddFooter:        excell.Footer,
-		AlignWithMargins: &v,
-		ScaleWithDoc:     &v,
-	})
-
-	if err != nil {
-		slog.Error("Failed to add footer and headers ", "error", err)
-	}
-	colWidths := make(map[int]float64)
-
-	for rowIndex, row := range excell.Rows {
-		for columnIndex, cell := range row {
-			colRow := fmt.Sprintf("%s%d", columns[columnIndex], rowIndex+1)
-			//colName, _ := excelize.ColumnNumberToName(columnIndex + 1)
-
-			addCell(ef, colRow, c.QueryParam("name"), &cell)
-
-			var val string
-			if cell.Value != nil {
-				val = fmt.Sprintf("%v", cell.Value)
-			}
-			width := float64(len(val)) + 2
-			if width > colWidths[columnIndex] {
-				colWidths[columnIndex] = width
-			}
-		}
-	}
-
-	for columnIndex, width := range colWidths {
-		colName, _ := excelize.ColumnNumberToName(columnIndex + 1)
-		ef.SetColWidth(c.QueryParam("name"), colName, colName, width)
-	}
-
-	ef.SetActiveSheet(index)
-
-	// Built in memory and sent with its real type: c.Attachment on a temp file
-	// guessed the type from the file's name, which was .csv.
-	out, err := ef.WriteToBuffer()
-
+	logo, _ := os.ReadFile(self.templateDir + "/logo.png")
+	out, err := buildWorkbook(excell, report.Name, logo)
 	if err != nil {
 		slog.Error("Error", "error", err)
-		return c.Render(200, "error.html", fmt.Sprintf("Failed to create excell sheet %s", err.Error()))
+		return renderError(c, http.StatusInternalServerError, fmt.Sprintf("Failed to create excell sheet %s", err.Error()))
 	}
 
+	if excell.FileName != "" {
+		downLoadFileName = excell.FileName
+	}
 	c.Response().Header().Set(echo.HeaderContentDisposition, mime.FormatMediaType("attachment", map[string]string{"filename": downLoadFileName + ".xlsx"}))
 	return c.Blob(http.StatusOK, xlsxContentType, out.Bytes())
-
 }
 
 // flattenQuery splits echo's url.Values into a single-value map (last value
@@ -203,8 +108,13 @@ func (rh ReportHandler) Generic(c echo.Context, reportType string, report *model
 
 	data, err := rh.scripts.Run(report.Script, ctx)
 	if err != nil {
-		slog.Error("Failed to run report script", "script", report.Script, "error", err.Error())
-		return c.Render(http.StatusOK, "error.html", err)
+		status := scriptErrorStatus(err)
+		if status == http.StatusForbidden {
+			slog.Info("Report not available to the caller", "script", report.Script, "reason", err.Error())
+		} else {
+			slog.Error("Failed to run report script", "script", report.Script, "error", err.Error())
+		}
+		return renderError(c, status, err)
 	}
 
 	slog.Debug("Data is\n\n", "data", data)
@@ -212,7 +122,7 @@ func (rh ReportHandler) Generic(c echo.Context, reportType string, report *model
 	downLoadFileName := "BlueAsset_" + c.QueryParam("name")
 
 	if reportType == "csv" {
-		return rh.buildCSV(c, map[string]interface{}{"data": data, "query": query, "now": ctx.Now.Format("2006-01-02 15:04:05")}, downLoadFileName)
+		return rh.buildCSV(c, report, map[string]interface{}{"data": data, "query": query, "now": ctx.Now.Format("2006-01-02 15:04:05")}, downLoadFileName)
 	} else {
 		return c.Render(http.StatusOK, templateName, map[string]interface{}{"data": data, "query": query, "now": ctx.Now.Format("2006-01-02 15:04:05")})
 	}
@@ -244,35 +154,6 @@ func structToMap(item interface{}) map[string]interface{} {
 	}
 
 	return res
-}
-
-func buildFont(font *model.FontStyle) *excelize.Font {
-	f := new(excelize.Font)
-
-	if font.Bold {
-		f.Bold = true
-	}
-	if font.Italic {
-		f.Italic = true
-	}
-
-	if font.Family != "" {
-		f.Family = font.Family
-	}
-
-	if font.Size != 0 {
-		f.Size = font.Size
-	}
-
-	if font.Strike {
-		f.Strike = true
-	}
-
-	if font.Color != "" {
-		f.Color = font.Color
-	}
-
-	return f
 }
 
 func buildBorder(border []*model.BorderStyle) []excelize.Border {
@@ -334,71 +215,4 @@ func buildFill(fill *model.FillStyle) *excelize.Fill {
 	}
 
 	return f
-}
-
-func addCell(ef *excelize.File, colRow string, sheet string, cell *model.ExcelReporCell) {
-
-	style := new(excelize.Style)
-
-	if cell.Font != nil {
-		style.Font = buildFont(cell.Font)
-	}
-
-	if cell.Fill != nil {
-		style.Fill = *buildFill(cell.Fill)
-	}
-
-	if len(cell.Border) > 0 {
-		style.Border = buildBorder(cell.Border)
-	}
-
-	_style, err := ef.NewStyle(style)
-	if err == nil {
-		ef.SetCellStyle(sheet, colRow, colRow, _style)
-	}
-
-	if cell.Type == "string" {
-		v, err := cast.ToStringE(cell.Value)
-		if err != nil {
-			v = err.Error()
-		}
-
-		v = html.UnescapeString(v)
-
-		// Set Value
-		ef.SetCellValue(sheet, colRow, v)
-
-	} else if cell.Type == "int" {
-		v, err := cast.ToInt64E(cell.Value)
-		if err != nil {
-			slog.Error("Convert to int", "error", err)
-			v = -999
-		}
-		style.NumFmt = 3
-		ef.SetCellValue(sheet, colRow, v)
-
-	} else if cell.Type == "float" {
-		v, err := cast.ToFloat64E(cell.Value)
-		if err != nil {
-			slog.Error("Convert to float", "error", err)
-			v = -999.99
-		}
-		style.NumFmt = 4
-		ef.SetCellValue(sheet, colRow, v)
-
-	} else if cell.Type == "date" {
-		v, err := cast.StringToDate(cell.Value.(string))
-		if err != nil {
-			slog.Error("Convert to date", "error", err)
-		}
-
-		customDateFormat := "yyyy-m-dd hh:mm:ss"
-		style.CustomNumFmt = &customDateFormat
-
-		ef.SetCellValue(sheet, colRow, v)
-
-	} else {
-		ef.SetCellValue(sheet, colRow, cell.Value)
-	}
-
 }

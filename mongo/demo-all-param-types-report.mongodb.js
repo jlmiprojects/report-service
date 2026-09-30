@@ -10,7 +10,7 @@
 // the cluster hosting the broker-portal `broker_portal` database (the
 // "brokerages" lookup script queries its `brokerages` collection).
 
-use("blueasset");
+use("broker_portal");
 
 db.reports.updateOne(
     { name: "demo-all-param-types" },

@@ -1,5 +1,6 @@
 // Registers (upserts) the "record-of-advice" report definition in the
-// blueasset.reports collection. Run once from the VS Code MongoDB extension
+// broker_portal.reports collection (the broker portal database, which
+// reports-service uses for its own report definitions too). Run once from the VS Code MongoDB extension
 // (or paste into mongosh). Mirrors conf/record_of_advice_report.json.
 //
 // Prereqs: conf/application.json -> mongo_connections.broker_portal points at
@@ -7,7 +8,7 @@
 // reports/record_of_advice.html + scripts/record_of_advice.js are deployed.
 // Restart reports-service after adding the template (parsed once at boot).
 
-use("blueasset");
+use("broker_portal");
 
 db.reports.updateOne(
     { name: "record-of-advice" },

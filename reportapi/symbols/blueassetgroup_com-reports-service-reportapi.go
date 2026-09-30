@@ -10,12 +10,14 @@ import (
 func init() {
 	Symbols["blueassetgroup.com/reports-service/reportapi/reportapi"] = map[string]reflect.Value{
 		// function, constant and variable definitions
-		"Init": reflect.ValueOf(reportapi.Init),
+		"Init":         reflect.ValueOf(reportapi.Init),
+		"NotAvailable": reflect.ValueOf(reportapi.NotAvailable),
 
 		// type definitions
-		"Context":     reflect.ValueOf((*reportapi.Context)(nil)),
-		"MongoHandle": reflect.ValueOf((*reportapi.MongoHandle)(nil)),
-		"Option":      reflect.ValueOf((*reportapi.Option)(nil)),
-		"Result":      reflect.ValueOf((*reportapi.Result)(nil)),
+		"Context":           reflect.ValueOf((*reportapi.Context)(nil)),
+		"MongoHandle":       reflect.ValueOf((*reportapi.MongoHandle)(nil)),
+		"NotAvailableError": reflect.ValueOf((*reportapi.NotAvailableError)(nil)),
+		"Option":            reflect.ValueOf((*reportapi.Option)(nil)),
+		"Result":            reflect.ValueOf((*reportapi.Result)(nil)),
 	}
 }

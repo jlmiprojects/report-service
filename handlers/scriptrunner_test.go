@@ -17,13 +17,14 @@ func writeScript(t *testing.T, path, src string) {
 }
 
 // TestScriptsCompile catches syntax/type errors in the .go report scripts
-// under ../scripts that `go vet ./...` can't see (they carry a //go:build
+// (in the reports repo, reached through the reports -> ../reports symlink)
+// that `go vet ./...` can't see (they carry a //go:build
 // ignore tag so they aren't compiled as part of this module — see
 // scripts/clients.go's file comment).
 func TestScriptsCompile(t *testing.T) {
-	for _, name := range []string{"clients", "record_of_advice"} {
+	for _, name := range []string{"clients", "record_of_advice", "commission_statement", "commission_statement_range", "commission_advisor_statement"} {
 		t.Run(name, func(t *testing.T) {
-			path := filepath.Join("..", "scripts", name+".go")
+			path := filepath.Join("..", "reports", "scripts", name+".go")
 			i, err := compileScript(path)
 			if err != nil {
 				t.Fatalf("compile %s: %v", path, err)
