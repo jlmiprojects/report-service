@@ -159,3 +159,36 @@ func TestCommissionAdvisorStatementTemplates(t *testing.T) {
 		t.Errorf("Excel 'yours' row = %v", r)
 	}
 }
+
+// The plan report renders a plan's movements and entries, in both formats,
+// including a correction, and with nothing in the range.
+func TestPlanCommissionTemplates(t *testing.T) {
+	tpl := commissionTemplates(t)
+	full := map[string]any{
+		"plan_id": "sim-plan-0001", "label": "Q-SIM-0001", "advisor": "Sipho Mokoena", "currency": "ZAR",
+		"from": "1 Sep 2025", "to": "31 Dec 2025", "run_from": "2025-09", "run_to": "2025-12",
+		"opening": int64(0), "loans": int64(20000000), "profits": int64(160000), "corrections": int64(-80000), "closing": int64(20080000),
+		"movements": []map[string]any{
+			{"date": "15 Sep 2025", "kind": "Loan", "amount": int64(20000000), "value": int64(20000000), "note": ""},
+			{"date": "16 Sep 2025", "kind": "Profit", "amount": int64(80000), "value": int64(20080000), "note": ""},
+			{"date": "17 Sep 2025", "kind": "Correction", "amount": int64(-80000), "value": int64(20000000), "note": "posted twice"},
+		},
+		"entries": []map[string]any{
+			{"run": "2025-09", "kind": "Once-off", "period": "", "recipient": "Mokoena Wealth", "recipient_type": "Brokerage",
+				"base": int64(20000000), "rate": 2.1, "amount": int64(126000), "currency": "ZAR"},
+		},
+		"totals":    []map[string]any{{"currency": "ZAR", "amount": int64(126000)}},
+		"generated": "6 Oct 2026 13:35",
+	}
+	html, _ := renderBoth(t, tpl, "plan_commission", full)
+	if !strings.Contains(html, "posted twice") || !strings.Contains(html, "Corrections") {
+		t.Fatal("the html is missing the correction")
+	}
+
+	empty := map[string]any{}
+	for k, v := range full {
+		empty[k] = v
+	}
+	empty["movements"], empty["entries"], empty["totals"] = []map[string]any{}, []map[string]any{}, []map[string]any{}
+	renderBoth(t, tpl, "plan_commission", empty)
+}
